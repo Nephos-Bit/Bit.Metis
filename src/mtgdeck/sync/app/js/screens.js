@@ -2,7 +2,6 @@
 
 import { currentDeck, deckBy, failedOps, gamesOf, isDemo, isPending, op, oppBy, oppName, oppSub, pendingCount, setPref, shortName, state } from "./data.js";
 import { askSheet } from "./claude.js";
-import { resumeCounter, runningGame, startCounter } from "./counter.js";
 import { cardSheet, gameDetailSheet, gameSheet, opponentSheet, settingsSheet, switchDeckSheet } from "./forms.js";
 import * as scry from "./scry.js";
 import { present, toast } from "./ui.js";
@@ -58,15 +57,11 @@ export function tisch() {
       : empty("decks", "Noch keine Decks", "Deine Decks kommen vom PC, sobald er abgeglichen hat.")}
     ${statusLine()}
     ${installHint()}
-    ${runningGame() ? `<button class="row lc-running" type="button" id="lc-resume"><span class="res win" aria-hidden="true">${icon("trophy", "sm")}</span>
-        <span class="main"><span class="title">Partie läuft – Zug ${runningGame().turn}</span><span class="subtitle">${runningGame().players.filter((p) => !p.out).length} von ${runningGame().players.length} noch drin · tippen zum Weiterzählen</span></span>${icon("chev-r", "sm chev")}</button>` : ""}
     <div class="section-head"><h2>Letzte Partien</h2></div>
     ${recent.length ? `<div class="group">${recent.map((g) => gameRow(g)).join("")}</div>`
       : `<div class="group">${empty("trophy", "Noch keine Partie eingetragen", "Nach der Partie unten auf „Partie eintragen“ – dauert ein paar Sekunden.")}</div>`}
     <div class="section-head"><h2>Schnell</h2></div>
     <div class="group">
-      ${d && !runningGame() ? `<button class="row" type="button" id="quick-counter"><span class="res win" aria-hidden="true">${icon("trophy", "sm")}</span>
-        <span class="main"><span class="title">Partie starten</span><span class="subtitle">Lebenspunkte, Commander-Schaden, Gift – am Ende gleich eintragen</span></span>${icon("chev-r", "sm chev")}</button>` : ""}
       <button class="row" type="button" id="quick-opp"><span class="res draw" aria-hidden="true">${icon("users", "sm")}</span>
         <span class="main"><span class="title">Gegnerdeck festhalten</span><span class="subtitle">Jemand hat ein neues Deck dabei</span></span>${icon("chev-r", "sm chev")}</button>
       <a class="row" href="#/karten"><span class="res win" aria-hidden="true">${icon("search", "sm")}</span>
@@ -82,8 +77,6 @@ export function tisch() {
       $("#switch-deck", el)?.addEventListener("click", switchDeckSheet);
       $("#show-r0", el)?.addEventListener("click", () => showRule0(d));
       $("#quick-opp", el).addEventListener("click", () => opponentSheet());
-      $("#quick-counter", el)?.addEventListener("click", () => startCounter());
-      $("#lc-resume", el)?.addEventListener("click", () => resumeCounter());
       $("#quick-ask", el).addEventListener("click", () => askSheet());
       $("#status-line", el)?.addEventListener("click", settingsSheet);
       $("#install-hint .x", el)?.addEventListener("click", () => { setPref("installHintDone", true); window.dispatchEvent(new Event("redraw")); });

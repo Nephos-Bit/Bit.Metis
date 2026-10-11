@@ -321,34 +321,8 @@ schneller.
 - kein Konto und kein Login außer der Kopplung;
 - keine Benachrichtigungen, keine Bewertungsbitten;
 - kein Deck-Bearbeiten auf dem Handy (dafür ist der PC da);
-- der Zähler „Partie läuft“ (unten) kennt nur Leben, Gift, Commander-Schaden, Monarch, Initiative und den Zug –
-  keine Karten und keinen Abgleich; er liefert am Ende nur das Partie-Formular vorbelegt.
-
-## Lebenspunktezähler „Partie läuft“
-
-Das Handy liegt flach in der Mitte des Tischs, jeder Spieler bekommt ein Feld, das zu seiner Tischkante gedreht ist –
-wie bei Lotus. Je Spielerzahl gibt es eine Galerie von Anordnungen als Mini-Raster (ein Strich markiert die Kante, an
-der jemand sitzt); ein Tipp auf ein Feld wählt die Anordnung und den eigenen Platz, man muss also nicht unten rechts
-sitzen. Die Felder sind flache Lotus-Farben (schwarze Zahl, auf sehr dunklen Farben weiß; die Farbe lässt sich im
-Spieler-Sheet wechseln), + und − sitzen mittig an den beiden Kanten. Anordnungen bei vier Spielern *An den Seiten* (alle um 90° gedreht, der Lotus-
-Standard), *Zwei gegenüber, zwei bei mir*, *Jeder an seiner Kante*, *Alle zu mir*; bei drei, fünf und sechs Spielern
-entsprechend mit Kopfenden und Längsseiten. Die Anordnung lässt sich während der Partie wechseln.
-
-- **Bedienen:** obere Hälfte +1, untere −1, gedrückt halten zählt weiter; die Änderung steht kurz als „−5“ im Feld.
-  Der Name öffnet den Spieler (Monarch, Initiative, ist dran, Leben setzen, raus/zurück). Zwei Chips: Gift und
-  Commander-Schaden. Letzterer schaltet wie bei Lotus den ganzen Bildschirm um: das Feld des Getroffenen sagt
-  „Commander-Schaden“, jedes andere Feld zählt den Schaden seines Commanders (oben +, unten −, halten zählt weiter),
-  die Lebenspunkte gehen mit runter; bei 21 oder 0 Leben geht es automatisch zurück ins Spiel.
-- **Raus:** bei 0 Leben, 10 Gift oder 21 Commander-Schaden von einem Gegner wird das Feld abgedunkelt („tippen =
-  zurück“). Bleibt einer übrig, bietet die App an, die Partie zu beenden.
-- **Mitte:** der runde Knopf zeigt den Zug und öffnet das Menü: nächster Zug, Rückgängig (letzte 40 Schritte),
-  W6/W20/Münze, Startspieler, Anordnung, Partie beenden, verwerfen.
-- **Start:** „Partie starten“ auf dem Tisch-Tab, die Gegner sind aus der letzten Partie (8 h) vorbelegt, Startleben
-  40/30/20, Startspieler auslosen. Eine laufende Partie überlebt Neuladen und App-Wechsel (localStorage) und steht
-  als Banner oben auf dem Tisch-Tab.
-- **Ende:** „Partie beenden“ schlägt Ergebnis und „Woran lag’s“ vor (ich raus durch Commander-Schaden → Niederlage,
-  „durch Commander-Schaden“) und öffnet das Partie-Formular mit Deck, Ergebnis, Zug, Gegnern und Startspieler
-  vorbelegt. Erst das Speichern dort erreicht den Server – der Zähler selbst wird nicht synchronisiert.
+- kein Lebenspunkte-Zähler. Später denkbar: Ein Zähler, der Sieger und Zug gleich mitliefert, wäre die konsequenteste
+  Form von „Vorbelegen“. Das ist ein eigenes Thema.
 
 ## Schritte
 
