@@ -328,7 +328,9 @@ schneller.
 
 Das Handy liegt flach in der Mitte des Tischs, jeder Spieler bekommt ein Feld, das zu seiner Tischkante gedreht ist –
 wie bei Lotus. Je Spielerzahl gibt es eine Galerie von Anordnungen als Mini-Raster (ein Strich markiert die Kante, an
-der jemand sitzt, das eigene Feld ist farbig): bei vier Spielern *An den Seiten* (alle um 90° gedreht, der Lotus-
+der jemand sitzt); ein Tipp auf ein Feld wählt die Anordnung und den eigenen Platz, man muss also nicht unten rechts
+sitzen. Die Felder sind flache Lotus-Farben (schwarze Zahl, auf sehr dunklen Farben weiß; die Farbe lässt sich im
+Spieler-Sheet wechseln), + und − sitzen mittig an den beiden Kanten. Anordnungen bei vier Spielern *An den Seiten* (alle um 90° gedreht, der Lotus-
 Standard), *Zwei gegenüber, zwei bei mir*, *Jeder an seiner Kante*, *Alle zu mir*; bei drei, fünf und sechs Spielern
 entsprechend mit Kopfenden und Längsseiten. Die Anordnung lässt sich während der Partie wechseln.
 

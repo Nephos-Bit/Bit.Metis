@@ -8,13 +8,22 @@
 import { currentDeck, oppBy, oppName, shortName, state } from "./data.js";
 import { gameSheet } from "./forms.js";
 import { closeSheet, openSheet, presentRaw, redraw as redrawSheet, toast } from "./ui.js";
-import { $, $$, artFallback, esc, icon, load, save, uid, vibrate } from "./util.js";
+import { $, $$, esc, icon, load, save, uid, vibrate } from "./util.js";
 
 const KEY = "amtisch.counter";
 const REMATCH_HOURS = 8;
 const HOLD_AFTER = 420, HOLD_EVERY = 110;  // hold a half: first repeat after 420 ms, then every 110 ms
 const HISTORY_MAX = 40;
 const LIFE_OPTIONS = [40, 30, 20];
+// flat panel colours like Lotus; a player can pick another one in the player sheet
+export const PALETTE = ["#f6c544", "#e63b4a", "#f2a6f2", "#3b43e8", "#2ec27e", "#ff8a2a", "#b86fcf", "#2b38ae", "#b38a0a", "#b3003e", "#19b6c9", "#f1f1f4"];
+/** Black or white text on a colour: black on everything but the really dark ones (relative luminance). */
+export function ink(hex) {
+  const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const n = parseInt(hex.slice(1), 16);
+  const l = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return l > 0.08 ? "ink-dark" : "ink-light";
+}
 
 // ---------- layouts: rows × cols grid, cells [row, col, rowSpan, colSpan, rotation]; 0 = facing the bottom edge,
 // 180 = the top edge, -90 = the left edge, 90 = the right edge; ``mine`` = the index of my own cell. Like Lotus:
@@ -83,14 +92,14 @@ let setup = null;
 export function startCounter() {
   if (runningGame()) return resumeCounter();
   const deck = currentDeck();
-  setup = { deck: deck?.slug || null, opps: defaultOpponents(), life: 40, layout: null, random: true };
+  setup = { deck: deck?.slug || null, opps: defaultOpponents(), life: 40, layout: null, seat: null, random: true };
   openSheet(setupPage, { full: false });
 }
 
 function setupPage({ push }) {
   const count = setup.opps.length + 1;
   const layouts = LAYOUTS[Math.min(Math.max(count, 2), 6)];
-  if (!layouts.some((l) => l.key === setup.layout)) setup.layout = layouts[0].key;
+  if (!layouts.some((l) => l.key === setup.layout)) { setup.layout = layouts[0].key; setup.seat = null; }
   const deck = state.snap.decks.find((d) => d.slug === setup.deck);
   const recent = recentOpponents().filter((o) => !setup.opps.some((x) => x.id === o.id)).slice(0, 8);
   return {
@@ -104,8 +113,8 @@ function setupPage({ push }) {
         ${count < 6 ? `<button class="chip add" type="button" id="lc-add">${icon("plus")}Gegner</button>` : ""}
       </div>
       ${recent.length && count < 6 ? `<div class="chips scroll" id="lc-recent">${recent.map((o) => `<button class="chip" type="button" data-pick="${esc(o.id)}">${esc(shortName(o.commanders[0] || oppName(o)))}</button>`).join("")}</div>` : ""}
-      <div class="field-label">Anordnung <span class="hint">das Handy liegt flach in der Mitte</span></div>
-      ${galleryHtml(layouts, setup.layout)}
+      <div class="field-label">Anordnung <span class="hint">tipp auf das Feld, wo du sitzt</span></div>
+      ${galleryHtml(layouts, setup.layout, setup.seat)}
       <div class="field-label">Startleben</div>
       <div class="chips" id="lc-life">${LIFE_OPTIONS.map((n) => `<button class="chip" type="button" data-life="${n}" aria-pressed="${setup.life === n}">${n}</button>`).join("")}</div>
       <label class="toggle-row"><span class="main"><span class="title">Startspieler auslosen</span></span><input type="checkbox" id="lc-random" ${setup.random ? "checked" : ""}></label>`,
@@ -114,7 +123,7 @@ function setupPage({ push }) {
       for (const b of $$("[data-remove]", root)) b.addEventListener("click", () => { setup.opps.splice(Number(b.dataset.remove), 1); redrawSheet(); });
       for (const b of $$("[data-pick]", root)) b.addEventListener("click", () => { const o = oppBy(b.dataset.pick); setup.opps.push({ id: o.id, commander: o.commanders[0] || "" }); vibrate(); redrawSheet(); });
       $("#lc-add", root)?.addEventListener("click", () => push(pickPage));
-      for (const b of $$("[data-layout]", root)) b.addEventListener("click", () => { setup.layout = b.dataset.layout; redrawSheet(); });
+      for (const b of $$("[data-seat]", root)) b.addEventListener("click", () => { setup.layout = b.dataset.layout; setup.seat = Number(b.dataset.seat); vibrate(); redrawSheet(); });
       for (const b of $$("[data-life]", root)) b.addEventListener("click", () => { setup.life = Number(b.dataset.life); redrawSheet(); });
       $("#lc-random", root).addEventListener("change", (e) => { setup.random = e.target.checked; });
       $("#lc-start", root).addEventListener("click", () => { begin(); });
@@ -153,9 +162,9 @@ const pickRows = (opps) => opps.length ? opps.map((o) => `<button class="row" ty
   : `<p class="hint-small">Keine Gegnerdecks – trag welche unter „Gegner“ ein.</p>`;
 
 /** The layout gallery: one mini grid per layout, the bar marks the edge a player sits at, my cell is coloured. */
-function galleryHtml(layouts, selected) {
-  return `<div class="lc-gallery">${layouts.map((l) => `<button class="lc-mini" type="button" data-layout="${l.key}" aria-pressed="${selected === l.key}" aria-label="${esc(l.name)}" data-grid="${l.rows} ${l.cols}">${
-    assignCells(l).map((cell) => `<span class="${cell.mine ? "me" : ""}" data-area="${area(cell)}" data-rot="${cell.rot}">${cell.mine ? "ich" : ""}</span>`).join("")}</button>`).join("")}</div>
+function galleryHtml(layouts, selected, seat) {
+  return `<div class="lc-gallery">${layouts.map((l) => `<div class="lc-mini ${selected === l.key ? "selected" : ""}" role="group" aria-label="${esc(l.name)}" data-grid="${l.rows} ${l.cols}">${
+    assignCells(l, selected === l.key ? seat : null).map((cell, i) => `<button class="lc-seat ${cell.mine && selected === l.key ? "me" : ""}" type="button" data-layout="${l.key}" data-seat="${i}" data-area="${area(cell)}" data-rot="${cell.rot}" aria-label="${esc(l.name)}, Platz ${i + 1}">${cell.mine && selected === l.key ? "ich" : ""}</button>`).join("")}</div>`).join("")}</div>
   <p class="hint-small lc-gallery-name">${esc(layouts.find((l) => l.key === selected)?.name || "")}</p>`;
 }
 
@@ -167,9 +176,9 @@ function seatAngle(cell, layout) {
 }
 
 /** Cells with ``seat``: 0 = me, then the opponents clockwise around the table from my seat. */
-function assignCells(layout) {
+function assignCells(layout, seat = null) {
   const cells = layout.cells.map((x) => ({ ...x }));
-  const mine = cells[layout.mine];
+  const mine = cells[Number.isInteger(seat) && seat >= 0 && seat < cells.length ? seat : layout.mine];
   mine.mine = true;
   mine.seat = 0;
   const a0 = seatAngle(mine, layout);
@@ -187,8 +196,8 @@ function begin() {
     const opp = o.id ? oppBy(o.id) : null;
     return { id: uid(), me: false, oppId: o.id, name: opp?.player ? opp.player : (opp ? "" : `Spieler ${i + 2}`), commander: o.commander || opp?.commanders?.[0] || "", colors: opp?.colors || "" };
   });
-  const players = [mine, ...others].map((p) => ({ ...p, life: setup.life, poison: 0, dmg: {}, out: null, outBy: null }));
-  c = { id: uid(), deck: setup.deck, started: new Date().toISOString(), life: setup.life, layout: setup.layout, turn: 1, active: 0, monarch: null, initiative: null, players, history: [], outs: 0 };
+  const players = [mine, ...others].map((p, i) => ({ ...p, color: PALETTE[i % PALETTE.length], life: setup.life, poison: 0, dmg: {}, out: null, outBy: null }));
+  c = { id: uid(), deck: setup.deck, started: new Date().toISOString(), life: setup.life, layout: setup.layout, seat: setup.seat, turn: 1, active: 0, monarch: null, initiative: null, players, history: [], outs: 0 };
   if (setup.random) c.active = Math.floor(Math.random() * players.length);
   c.starter = c.active;
   closeSheet();
@@ -212,7 +221,7 @@ function show() {
 
 function render() {
   const layout = layoutOf(c);
-  const cells = assignCells(layout);
+  const cells = assignCells(layout, c.seat);
   const order = [c.players.find((p) => p.me), ...c.players.filter((p) => !p.me)];
   const panels = cells.map((cell) => ({ cell, p: order[cell.seat] }));
   const menu = dmgTo
@@ -228,7 +237,7 @@ function render() {
  *  commander has dealt to them – plus/minus like life, and the life goes down with it. */
 function dmgPad(p) {
   const to = c.players.find((x) => x.id === dmgTo);
-  if (p.id === dmgTo) return `<div class="lc-pad receiver" data-p="${p.id}" data-bg="${esc(p.colors)}">
+  if (p.id === dmgTo) return `<div class="lc-pad receiver ink-light" data-p="${p.id}" data-color="#2a2a35">
     <div class="lc-face">
       <div class="lc-big">Commander-Schaden</div>
       <div class="lc-sub">den ${esc(playerTitle(p))} bekommen hat · Leben <b data-rlife>${p.life}</b></div>
@@ -237,7 +246,7 @@ function dmgPad(p) {
   </div>`;
   const n = to.dmg[p.id] || 0;
   const who = shortName(p.commander) || playerTitle(p);
-  return `<div class="lc-pad dmg ${n >= 21 ? "lethal" : ""}" data-p="${p.id}" data-bg="${esc(p.colors)}">
+  return `<div class="lc-pad dmg ink-light ${n >= 21 ? "lethal" : ""}" data-p="${p.id}" data-color="${esc(color(p))}">
     <button class="lc-half plus" type="button" data-dmg-step="1" data-src="${p.id}" aria-label="Schaden von ${esc(who)}: plus eins"></button>
     <button class="lc-half minus" type="button" data-dmg-step="-1" data-src="${p.id}" aria-label="Schaden von ${esc(who)}: minus eins"></button>
     <div class="lc-face">
@@ -249,11 +258,13 @@ function dmgPad(p) {
   </div>`;
 }
 
+const color = (p) => p.color || PALETTE[c.players.indexOf(p) % PALETTE.length];
+
 function pad(p) {
   if (dmgTo && (p.id === dmgTo || !p.out)) return dmgPad(p);
   const dmgSum = Object.values(p.dmg).reduce((a, b) => a + b, 0);
   const active = c.players[c.active]?.id === p.id;
-  return `<div class="lc-pad ${p.out ? "out" : ""} ${active ? "active" : ""}" data-p="${p.id}" data-bg="${esc(p.colors)}">
+  return `<div class="lc-pad ${ink(color(p))} ${p.out ? "out" : ""} ${active ? "active" : ""}" data-p="${p.id}" data-color="${esc(color(p))}">
     <button class="lc-half plus" type="button" data-life="1" data-p="${p.id}" aria-label="${esc(playerTitle(p))}: plus eins"></button>
     <button class="lc-half minus" type="button" data-life="-1" data-p="${p.id}" aria-label="${esc(playerTitle(p))}: minus eins"></button>
     <div class="lc-face">
@@ -277,7 +288,7 @@ function paintGrid(root) {
     g.style.setProperty("--cols", cols);
   }
   for (const x of $$("[data-area]", root)) x.style.gridArea = x.dataset.area;
-  for (const x of $$("[data-bg]", root)) x.style.background = artFallback(x.dataset.bg);
+  for (const x of $$("[data-color]", root)) x.style.background = x.dataset.color;
 }
 const area = (cell) => `${cell.r} / ${cell.c} / span ${cell.rs} / span ${cell.cs}`;
 
@@ -292,6 +303,7 @@ function fit() {
     pad.style.setProperty("--pw", `${pw - 6}px`);
     pad.style.setProperty("--ph", `${ph - 6}px`);
     pad.style.setProperty("--rot", `${rot}deg`);
+    pad.classList.toggle("wide", pw > ph * 1.3);  // a flat panel: name, number and chips side by side
   }
 }
 addEventListener("resize", () => fit());
@@ -402,8 +414,12 @@ function playerSheet(pid) {
         <button class="row" type="button" id="lc-set-life"><span class="res draw" aria-hidden="true">${icon("edit", "sm")}</span><span class="main"><span class="title">Leben setzen</span><span class="subtitle">${p.life} – genauen Wert eintippen</span></span></button>
         ${p.out ? `<button class="row" type="button" id="lc-revive"><span class="res win" aria-hidden="true">${icon("plus", "sm")}</span><span class="main"><span class="title">Zurück ins Spiel</span></span></button>`
           : `<button class="row" type="button" id="lc-out"><span class="res loss" aria-hidden="true">${icon("x", "sm")}</span><span class="main"><span class="title">Ausgeschieden</span><span class="subtitle">aufgegeben, Combo, alternative Siegbedingung</span></span></button>`}
-      </div>`,
+      </div>
+      <div class="field-label">Farbe des Felds</div>
+      <div class="lc-swatches">${PALETTE.map((h) => `<button class="lc-swatch" type="button" data-color="${h}" data-pick-color="${h}" aria-pressed="${color(p) === h}" aria-label="Farbe ${h}"></button>`).join("")}</div>`,
     bind(root) {
+      paintGrid(root);
+      for (const b of $$("[data-pick-color]", root)) b.addEventListener("click", () => { p.color = b.dataset.pickColor; vibrate(); persist(); rerender(); redrawSheet(); });
       $("#lc-monarch", root).addEventListener("click", () => { snapshot(); c.monarch = c.monarch === pid ? null : pid; done(); });
       $("#lc-init", root).addEventListener("click", () => { snapshot(); c.initiative = c.initiative === pid ? null : pid; done(); });
       $("#lc-active", root).addEventListener("click", () => { c.active = c.players.indexOf(p); done(); });
@@ -531,9 +547,9 @@ function layoutSheet() {
   const layouts = LAYOUTS[c.players.length];
   openSheet(() => ({
     title: "Anordnung",
-    body: galleryHtml(layouts, layoutOf(c).key),
+    body: `<p class="hint-small">Tipp auf das Feld, wo du sitzt.</p>${galleryHtml(layouts, layoutOf(c).key, c.seat)}`,
     bind(root) {
-      for (const b of $$("[data-layout]", root)) b.addEventListener("click", () => { c.layout = b.dataset.layout; persist(); closeSheet(); rerender(); });
+      for (const b of $$("[data-seat]", root)) b.addEventListener("click", () => { c.layout = b.dataset.layout; c.seat = Number(b.dataset.seat); persist(); closeSheet(); rerender(); });
       paintGrid(root);
     },
   }));

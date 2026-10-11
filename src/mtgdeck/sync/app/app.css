@@ -601,28 +601,39 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; a
   gap: 6px; padding: calc(var(--top) + 6px) 6px max(env(safe-area-inset-bottom), 6px); background: #06060a; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 .lc-cell { position: relative; overflow: hidden; min-width: 0; min-height: 0; }
 .lc-pad { position: absolute; left: 50%; top: 50%; width: var(--pw); height: var(--ph); transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
-  border-radius: 22px; color: #fff; overflow: hidden; box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / .14); }
-.lc-pad::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(0 0 0 / .18), rgb(0 0 0 / .42)); }
-.lc-pad.active { box-shadow: inset 0 0 0 3px rgb(255 255 255 / .85); }
+  border-radius: 22px; overflow: hidden; }
+.lc-pad.ink-dark { color: #111; } .lc-pad.ink-light { color: #fff; }
+.lc-pad.active { box-shadow: inset 0 0 0 4px rgb(0 0 0 / .55); } .lc-pad.ink-light.active { box-shadow: inset 0 0 0 4px rgb(255 255 255 / .85); }
 .lc-half { position: absolute; left: 0; right: 0; height: 50%; background: none; border: 0; padding: 0; margin: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .lc-half.plus { top: 0; } .lc-half.minus { bottom: 0; }
-.lc-half:active { background: rgb(255 255 255 / .12); }
-.lc-half.plus::after, .lc-half.minus::after { position: absolute; left: 14px; font-size: 1.4rem; font-weight: 700; opacity: .55; }
-.lc-half.plus::after { content: "+"; top: 10px; } .lc-half.minus::after { content: "−"; bottom: 10px; }
+.lc-half:active { background: rgb(0 0 0 / .09); } .ink-light .lc-half:active { background: rgb(255 255 255 / .14); }
+.lc-half.plus::after, .lc-half.minus::after { position: absolute; left: 50%; translate: -50% 0; font-size: 2rem; line-height: 1; font-weight: 800; opacity: .3; }
+.lc-half.plus::after { content: "+"; top: 14px; } .lc-half.minus::after { content: "−"; bottom: 14px; }
 .lc-face { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 2px; }
 .lc-face > * { pointer-events: auto; }
-.lc-name { background: none; border: 0; color: #fff; font: inherit; font-size: clamp(.8rem, calc(var(--pw) * .055), 1.05rem); font-weight: 650; opacity: .92; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: var(--r-pill); }
-.lc-name small { font-weight: 500; opacity: .8; }
-.lc-life { font-size: calc(min(var(--pw), var(--ph)) * .46); line-height: .95; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; text-shadow: 0 2px 10px rgb(0 0 0 / .35); pointer-events: none; }
-.lc-delta { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font-size: clamp(1rem, calc(var(--pw) * .08), 1.5rem); font-weight: 700; background: rgb(0 0 0 / .45); border-radius: var(--r-pill); padding: 4px 12px; pointer-events: none; }
+.lc-name { background: none; border: 0; color: inherit; font: inherit; font-size: clamp(.8rem, calc(var(--pw) * .055), 1.05rem); font-weight: 650; opacity: .75; max-width: 92%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: var(--r-pill); }
+.lc-name small { font-weight: 500; opacity: .85; }
+.lc-life { font-size: calc(min(var(--pw), var(--ph)) * .5); line-height: .95; font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; pointer-events: none; }
+.lc-delta { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font-size: clamp(1rem, calc(var(--pw) * .08), 1.5rem); font-weight: 700; background: rgb(0 0 0 / .78); color: #fff; border-radius: var(--r-pill); padding: 4px 12px; pointer-events: none; }
 .lc-chips { display: flex; gap: 6px; }
-.lc-chip { display: inline-flex; align-items: center; gap: 3px; min-width: 40px; min-height: 30px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: rgb(0 0 0 / .32); color: #fff; font: inherit; font-size: var(--t-foot); font-weight: 650; }
-.lc-chip.on { background: rgb(255 255 255 / .92); color: #111; }
+.lc-chip { display: inline-flex; align-items: center; gap: 3px; min-width: 40px; min-height: 30px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: rgb(0 0 0 / .14); color: inherit; font: inherit; font-size: var(--t-foot); font-weight: 650; }
+.ink-light .lc-chip { background: rgb(255 255 255 / .18); }
+.lc-chip.on { background: #111; color: #fff; } .ink-light .lc-chip.on { background: #fff; color: #111; }
 .lc-chip .icon { width: 14px; height: 14px; }
 .lc-pad.out .lc-half { pointer-events: none; }
 .lc-pad.out .lc-face { opacity: .14; }
-.lc-outlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 750; font-size: clamp(.95rem, calc(var(--pw) * .07), 1.3rem); background: rgb(0 0 0 / .55); }
+.lc-outlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #fff; font-weight: 750; font-size: clamp(.95rem, calc(var(--pw) * .07), 1.3rem); background: rgb(0 0 0 / .62); }
 .lc-outlay small { font-weight: 500; opacity: .75; font-size: var(--t-foot); }
+/* flat (sideways) panels: a row instead of a column, so nothing sits under the + and − at the edges */
+.lc-pad.wide:not(.receiver) .lc-face { flex-direction: row; gap: 12px; padding: 0 16px; }
+.lc-pad.wide .lc-name { order: 1; max-width: 32%; }
+.lc-pad.wide .lc-life { order: 2; font-size: calc(min(var(--pw), var(--ph)) * .5); }
+.lc-pad.wide .lc-chips, .lc-pad.wide .lc-sub { order: 3; }
+.lc-pad.wide .lc-chips { flex-direction: column; }
+.lc-pad.wide .lc-delta { right: auto; left: 50%; top: auto; bottom: 6px; translate: -50% 0; font-size: 1rem; padding: 2px 10px; }
+.lc-swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 0 8px; }
+.lc-swatch { width: 40px; height: 40px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
+.lc-swatch[aria-pressed="true"] { border-color: var(--text); }
 .lc-menu { position: fixed; left: 50%; top: 50%; translate: -50% -50%; z-index: 101; width: 58px; height: 58px; border-radius: 50%; border: 0; display: grid; place-items: center;
   background: var(--bar-solid); color: var(--text); box-shadow: 0 6px 24px rgb(0 0 0 / .45), 0 0 0 3px #06060a; font: inherit; }
 .lc-menu .icon { width: 22px; height: 22px; }
@@ -639,21 +650,23 @@ input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; a
 .lc-running .subtitle { color: inherit; opacity: .8; }
 .lc-gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; }
 .lc-gallery-name { text-align: center; margin: 8px 0 2px; }
-.lc-mini { display: grid; grid-template-rows: repeat(var(--rows), 1fr); grid-template-columns: repeat(var(--cols), 1fr); gap: 4px; aspect-ratio: 3 / 4; width: 100%; padding: 6px; border: 2px solid transparent; border-radius: 14px; background: #06060a; cursor: pointer; }
-.lc-mini[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.lc-mini span { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; border-radius: 6px; background: rgb(255 255 255 / .9); color: #000; font-size: var(--t-cap); font-weight: 700; }
-.lc-mini span.me { background: var(--accent); color: #fff; }
-.lc-mini span::after { content: ""; position: absolute; border-radius: 2px; background: rgb(0 0 0 / .3); }
-.lc-mini span.me::after { background: rgb(255 255 255 / .75); }
-.lc-mini span[data-rot="0"]::after { left: 25%; right: 25%; bottom: 3px; height: 3px; }
-.lc-mini span[data-rot="180"]::after { left: 25%; right: 25%; top: 3px; height: 3px; }
-.lc-mini span[data-rot="-90"]::after { top: 25%; bottom: 25%; left: 3px; width: 3px; }
-.lc-mini span[data-rot="90"]::after { top: 25%; bottom: 25%; right: 3px; width: 3px; }
+.lc-mini { display: grid; grid-template-rows: repeat(var(--rows), 1fr); grid-template-columns: repeat(var(--cols), 1fr); gap: 4px; aspect-ratio: 3 / 4; width: 100%; padding: 6px; border: 2px solid transparent; border-radius: 14px; background: #06060a; }
+.lc-mini.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.lc-seat { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 6px; background: rgb(255 255 255 / .9); color: #000; font: inherit; font-size: var(--t-cap); font-weight: 700; cursor: pointer; }
+.lc-seat:active { background: rgb(255 255 255 / .6); }
+.lc-seat.me { background: var(--accent); color: #fff; }
+.lc-seat::after { content: ""; position: absolute; border-radius: 2px; background: rgb(0 0 0 / .3); }
+.lc-seat.me::after { background: rgb(255 255 255 / .75); }
+.lc-seat[data-rot="0"]::after { left: 25%; right: 25%; bottom: 3px; height: 3px; }
+.lc-seat[data-rot="180"]::after { left: 25%; right: 25%; top: 3px; height: 3px; }
+.lc-seat[data-rot="-90"]::after { top: 25%; bottom: 25%; left: 3px; width: 3px; }
+.lc-seat[data-rot="90"]::after { top: 25%; bottom: 25%; right: 3px; width: 3px; }
 /* commander-damage mode */
 .lc-menu.dmg { background: #ffcf33; color: #000; }
+.lc-pad.dmg::before { content: ""; position: absolute; inset: 0; background: rgb(0 0 0 / .42); pointer-events: none; }
 .lc-pad.receiver .lc-face { gap: 10px; padding: 12px; text-align: center; }
 .lc-pad.receiver .lc-face > * { pointer-events: auto; }
-.lc-big { font-size: clamp(1.1rem, calc(var(--pw) * .1), 2rem); font-weight: 800; letter-spacing: -.02em; line-height: 1.05; text-shadow: 0 2px 10px rgb(0 0 0 / .35); }
+.lc-big { font-size: clamp(1.1rem, calc(var(--pw) * .1), 2rem); font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
 .lc-sub { font-size: clamp(.75rem, calc(var(--pw) * .05), 1rem); opacity: .85; }
 .lc-pad.receiver .btn.pill { background: #ffcf33; color: #000; font-weight: 700; margin-top: 4px; }
 .lc-pad.dmg .lc-name.static { pointer-events: none; }
