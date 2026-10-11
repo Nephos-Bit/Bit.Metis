@@ -1,9 +1,9 @@
 [Unit]
-Description=MTG-Deckbuilder Sync: nächtliche Updates
+Description=MTG-Deckbuilder Sync: stündlich nach Updates schauen
 
 [Timer]
-OnCalendar=*-*-* 04:15
-RandomizedDelaySec=30m
+OnCalendar=hourly
+RandomizedDelaySec=10m
 Persistent=true
 
 [Install]

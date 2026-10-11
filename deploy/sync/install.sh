@@ -55,7 +55,7 @@ say "Automatische Updates"
 cp "$DIR/mtgdeck-sync-update.service" "$DIR/mtgdeck-sync-update.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now mtgdeck-sync-update.timer >/dev/null
-echo "Neue Versionen des Sync-Servers und von Caddy werden jede Nacht gegen 4:15 Uhr geholt."
+echo "Der Server schaut jede Stunde nach neuen Versionen von Sync-Server und Caddy und spielt sie ein."
 if command -v apt-get >/dev/null 2>&1; then  # security updates of the system itself (Ubuntu: usually on already)
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unattended-upgrades >/dev/null 2>&1 || true
 fi

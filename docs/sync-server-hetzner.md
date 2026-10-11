@@ -79,7 +79,7 @@ Das Skript (`deploy/sync/install.sh`) macht Folgendes:
 - installiert Docker;
 - legt `/opt/mtgdeck-sync` an (`compose.yml`, `Caddyfile`, `.env`, `data/`);
 - startet den Sync-Server und Caddy. Caddy holt das HTTPS-Zertifikat von Let's Encrypt und verlängert es selbst;
-- richtet nächtliche Updates ein (systemd-Timer um etwa 4:15 Uhr);
+- richtet automatische Updates ein (systemd-Timer, stündlich);
 - schaltet die automatischen Sicherheitsupdates von Ubuntu ein, falls sie es noch nicht sind;
 - zeigt am Ende den **Kopplungscode** und den **Kopplungslink** für deinen PC.
 
@@ -125,8 +125,15 @@ cd /opt/mtgdeck-sync && docker compose exec sync mtg-sync-server pair
 
 ## Updates
 
-- **Automatisch:** Jede Nacht holt der Timer neue Versionen von Sync-Server und Caddy und startet sie neu.
-- **Von Hand:** `/opt/mtgdeck-sync/update.sh`
+- **Automatisch:** Jede Stunde prüft der Timer, ob es neue Images von Sync-Server oder Caddy gibt, und startet nur
+  dann neu (ein paar Sekunden Pause). Ein Push ins Repository ist also nach dem Image-Build (etwa 10 Minuten) binnen
+  einer Stunde auf dem Server. Protokoll: `journalctl -u mtgdeck-sync-update.service -n 20`.
+  Sofort einspielen: `/opt/mtgdeck-sync/update.sh`; Neustart erzwingen: `/opt/mtgdeck-sync/update.sh --force`.
+- **Timer auf einem älteren Server erneuern** (einmalig, holt Timer und Skript neu):
+
+  ```bash
+  cd /opt/mtgdeck-sync && for f in update.sh mtgdeck-sync-update.timer mtgdeck-sync-update.service; do curl -fsSL https://raw.githubusercontent.com/liehrdot/mtgdeckbuilder/HEAD/deploy/sync/$f -o $f; done && chmod +x update.sh && cp mtgdeck-sync-update.* /etc/systemd/system/ && systemctl daemon-reload && systemctl restart mtgdeck-sync-update.timer && systemctl list-timers mtgdeck-sync-update.timer
+  ```
 - **Betriebssystem:** Die Sicherheitsupdates kommen über `unattended-upgrades`. Nach Kernel-Updates gelegentlich
   `reboot`; die Dienste starten von selbst wieder.
 
