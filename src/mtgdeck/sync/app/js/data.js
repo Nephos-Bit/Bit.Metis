@@ -224,12 +224,13 @@ async function pollStatus() {
     const res = await api("/api/app/status");
     if (!res.ok) return;
     const st = await res.json();
-    const before = JSON.stringify([state.pcs, state.jobs, state.online]);
+    const shown = () => JSON.stringify([state.pcs.map(({ last_seen, ...p }) => p), state.jobs, state.online]);  // last_seen ticks on every request
+    const before = shown();
     state.pcs = st.pcs || [];
     state.jobs = st.jobs || [];
     state.online = true;
     if (st.etag !== state.etag) await refresh();
-    else if (JSON.stringify([state.pcs, state.jobs, state.online]) !== before) emit();  // redraw only when something changed
+    else if (shown() !== before) emit();  // redraw only when something visible changed
   } catch { state.online = false; emit(); }
 }
 

@@ -177,6 +177,13 @@ def test_phone_reads_data_sends_operations_and_the_pc_gets_them(tmp_path, monkey
     krenko = opponents_mod.get("krenko1")
     assert krenko["commanders"] == ["Krenko, Mob Boss"] and opponents_mod.record(krenko)["games"] == 1
 
+    # deleted at the PC: the next sync pushes the shorter list, and the phone's next read no longer shows the game
+    assert games_mod.delete("meren", "gphone1")
+    run = service.run(roots=pc, client=client)
+    assert run["ok"] and "Partien mit „Meren“" in run["outgoing"]
+    after = client.get("/api/app/data", headers=auth).json()
+    assert after["games"] == [] and after["decks"][0]["record"]["wins"] == 0
+
 
 def test_pairing_link_and_root_lead_to_the_app_and_the_worker_is_versioned(tmp_path):
     client = TestClient(create_app(tmp_path))

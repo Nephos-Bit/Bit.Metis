@@ -8,7 +8,7 @@ import { present, toast } from "./ui.js";
 import { $, $$, RESULT_TEXT, ago, artFallback, debounce, esc, icon, pips, plural, recordText, uid } from "./util.js";
 
 // ---------- shared pieces ----------
-export const art = (name, kind = "art", cls = "") => `<img data-card="${esc(name)}" data-kind="${kind}" alt="" class="${cls}" decoding="async" loading="lazy">`;
+export const art = (name, kind = "art", cls = "") => `<img data-card="${esc(name)}" data-kind="${kind}" alt="" class="${cls}" loading="lazy">`;
 const thumb = (name, colors, cls = "thumb") => `<span class="${cls}" data-bg="${esc(colors || "")}">${art(name, "art", cls)}</span>`;
 
 export function gameRow(g, { showDeck = true } = {}) {

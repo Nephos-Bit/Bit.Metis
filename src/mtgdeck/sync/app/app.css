@@ -177,6 +177,10 @@ body:has(.topbar.show)::before, body.no-tabs::before { opacity: 0; }
 .fab .icon { stroke-width: 2.4; }
 
 /* ---------- tab bar ---------- */
+/* catches taps beside and below the floating bar (home-indicator area), where the list used to be hit by mistake */
+.tabbar-backdrop { position: fixed; z-index: 39; left: 0; right: 0; bottom: 0; height: calc(var(--tabbar-h) + var(--tabbar-gap) + 14px);
+  background: linear-gradient(180deg, transparent, var(--bg) 55%); }
+.no-tabs .tabbar-backdrop { display: none; }
 .tabbar {
   position: fixed; z-index: 40; left: 12px; right: 12px; bottom: var(--tabbar-gap); height: var(--tabbar-h);
   max-width: 520px; margin: 0 auto;

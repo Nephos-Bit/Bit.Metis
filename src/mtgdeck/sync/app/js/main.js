@@ -29,12 +29,17 @@ function screenFor(r) {
   return { tisch, decks, gegner, karten, claude }[r.tab]();
 }
 
+let lastHtml = null;
 function draw({ keepScroll = false } = {}) {
   const r = parse();
   const key = `${state.mode}:${r.tab}/${r.id || ""}`;
   const s = screenFor(r);
   const main = $("#screen");
-  main.innerHTML = s.html;
+  // same screen, same markup (a status poll, a presence update): leave the DOM alone – rebuilding it reloads
+  // every card image and makes the whole screen flicker
+  const same = keepScroll && current?.key === key && s.html === lastHtml;
+  lastHtml = s.html;
+  if (!same) main.innerHTML = s.html;
   const fabOn = !!s.fab && state.mode !== "none";
   main.classList.toggle("has-fab", fabOn);
   document.body.classList.toggle("has-fab", fabOn);
@@ -51,9 +56,11 @@ function draw({ keepScroll = false } = {}) {
   const unread = state.snap ? unreadCount() : 0;  // new answers from Claude
   $(".tabbar [data-tab=claude] .tab-dot").hidden = !unread;
   $(".tabbar [data-tab=claude]").setAttribute("aria-label", unread ? `Claude, ${unread === 1 ? "eine neue Antwort" : `${unread} neue Antworten`}` : "Claude");
-  s.bind?.(main);
-  scry.hydrate(main);
-  paint(main);
+  if (!same) {
+    s.bind?.(main);
+    scry.hydrate(main);
+    paint(main);
+  }
   topbar({ ...s.bar, watch: s.bar?.watch ? main.querySelector(s.bar.watch) : null });
   document.title = `${s.bar?.title && r.tab !== "tisch" && state.mode !== "none" ? `${s.bar.title} · ` : ""}Am Tisch`;
   if (!keepScroll) scrollTo(0, scrolls[key] || 0);
