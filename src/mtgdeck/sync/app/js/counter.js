@@ -16,23 +16,30 @@ const HOLD_AFTER = 420, HOLD_EVERY = 110;  // hold a half: first repeat after 42
 const HISTORY_MAX = 40;
 const LIFE_OPTIONS = [40, 30, 20];
 
-// ---------- layouts: rows × cols grid, cells [row, col, rowSpan, colSpan, rotation]; 0 = facing me (bottom),
-// 180 = across the table, -90 = left edge, 90 = right edge. My own panel takes the last cell with rotation 0.
-const L = (key, name, rows, cols, cells) => ({ key, name, rows, cols, cells: cells.map(([r, c, rs, cs, rot]) => ({ r, c, rs, cs, rot })) });
+// ---------- layouts: rows × cols grid, cells [row, col, rowSpan, colSpan, rotation]; 0 = facing the bottom edge,
+// 180 = the top edge, -90 = the left edge, 90 = the right edge; ``mine`` = the index of my own cell. Like Lotus:
+// the first one per player count is the recommended one (phone flat in the middle, everyone at their edge).
+const L = (key, name, rows, cols, cells, mine) => ({ key, name, rows, cols, mine, cells: cells.map(([r, c, rs, cs, rot]) => ({ r, c, rs, cs, rot })) });
 export const LAYOUTS = {
-  2: [L("round", "Gegenüber", 2, 1, [[1, 1, 1, 1, 180], [2, 1, 1, 1, 0]]),
-      L("mine", "Alle zu mir", 2, 1, [[1, 1, 1, 1, 0], [2, 1, 1, 1, 0]])],
-  3: [L("round", "Rund um den Tisch", 2, 2, [[1, 1, 1, 2, 180], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0]]),
-      L("sides", "An den Seiten", 2, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 2, 0]]),
-      L("mine", "Alle zu mir", 3, 1, [[1, 1, 1, 1, 0], [2, 1, 1, 1, 0], [3, 1, 1, 1, 0]])],
-  4: [L("round", "Rund um den Tisch", 2, 2, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 180], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0]]),
-      L("sides", "An den Seiten", 2, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90]]),
-      L("mine", "Alle zu mir", 2, 2, [[1, 1, 1, 1, 0], [1, 2, 1, 1, 0], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0]])],
-  5: [L("round", "Rund um den Tisch", 3, 2, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 180], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 2, 0]]),
-      L("mine", "Alle zu mir", 3, 2, [[1, 1, 1, 1, 0], [1, 2, 1, 1, 0], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0], [3, 1, 1, 2, 0]])],
-  6: [L("sides", "An den Seiten", 3, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 1, -90], [3, 2, 1, 1, 90]]),
-      L("round", "Rund um den Tisch", 3, 2, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 180], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 1, 0], [3, 2, 1, 1, 0]]),
-      L("mine", "Alle zu mir", 3, 2, [[1, 1, 1, 1, 0], [1, 2, 1, 1, 0], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0], [3, 1, 1, 1, 0], [3, 2, 1, 1, 0]])],
+  2: [L("across", "Gegenüber", 2, 1, [[1, 1, 1, 1, 180], [2, 1, 1, 1, 0]], 1),
+      L("sides", "Seitlich gegenüber", 1, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90]], 1),
+      L("mine", "Beide zu mir", 2, 1, [[1, 1, 1, 1, 0], [2, 1, 1, 1, 0]], 1)],
+  3: [L("sides", "Zwei seitlich, ich unten", 2, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 2, 0]], 2),
+      L("across", "Rund um den Tisch", 2, 2, [[1, 1, 1, 2, 180], [2, 1, 1, 1, -90], [2, 2, 1, 1, 0]], 2),
+      L("long", "An den Längsseiten", 2, 2, [[1, 1, 2, 1, -90], [1, 2, 1, 1, 90], [2, 2, 1, 1, 90]], 2),
+      L("mine", "Alle zu mir", 3, 1, [[1, 1, 1, 1, 0], [2, 1, 1, 1, 0], [3, 1, 1, 1, 0]], 2)],
+  4: [L("sides", "An den Seiten", 2, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90]], 3),
+      L("across", "Zwei gegenüber, zwei bei mir", 2, 2, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 180], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0]], 3),
+      L("corners", "Jeder an seiner Kante", 2, 2, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 90], [2, 1, 1, 1, -90], [2, 2, 1, 1, 0]], 3),
+      L("mine", "Alle zu mir", 2, 2, [[1, 1, 1, 1, 0], [1, 2, 1, 1, 0], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0]], 3)],
+  5: [L("sides", "Vier seitlich, ich unten", 3, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 2, 0]], 4),
+      L("end", "Einer am Kopfende", 3, 2, [[1, 1, 1, 2, 180], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 1, -90], [3, 2, 1, 1, 90]], 4),
+      L("across", "Rund um den Tisch", 3, 2, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 180], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 2, 0]], 4),
+      L("mine", "Alle zu mir", 3, 2, [[1, 1, 1, 1, 0], [1, 2, 1, 1, 0], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0], [3, 1, 1, 2, 0]], 4)],
+  6: [L("sides", "An den Seiten", 3, 2, [[1, 1, 1, 1, -90], [1, 2, 1, 1, 90], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 1, -90], [3, 2, 1, 1, 90]], 5),
+      L("ends", "Je einer an den Kopfenden", 4, 2, [[1, 1, 1, 2, 180], [2, 1, 1, 1, -90], [2, 2, 1, 1, 90], [3, 1, 1, 1, -90], [3, 2, 1, 1, 90], [4, 1, 1, 2, 0]], 5),
+      L("across", "Drei gegenüber, drei bei mir", 2, 3, [[1, 1, 1, 1, 180], [1, 2, 1, 1, 180], [1, 3, 1, 1, 180], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0], [2, 3, 1, 1, 0]], 5),
+      L("mine", "Alle zu mir", 3, 2, [[1, 1, 1, 1, 0], [1, 2, 1, 1, 0], [2, 1, 1, 1, 0], [2, 2, 1, 1, 0], [3, 1, 1, 1, 0], [3, 2, 1, 1, 0]], 5)],
 };
 const layoutOf = (c) => LAYOUTS[c.players.length].find((l) => l.key === c.layout) || LAYOUTS[c.players.length][0];
 
@@ -41,6 +48,7 @@ let c = null;           // the running game, or null
 let el = null;          // the full-screen element while shown
 let closeScreen = null; // closes the full screen (from presentRaw)
 let hold = null;        // the running hold-to-repeat
+let dmgTo = null;       // commander-damage mode: the id of the player taking the damage, or null
 const deltas = new Map();  // player id → {sum, timer}
 
 export const runningGame = () => c || (c = load(KEY, null));
@@ -75,7 +83,7 @@ let setup = null;
 export function startCounter() {
   if (runningGame()) return resumeCounter();
   const deck = currentDeck();
-  setup = { deck: deck?.slug || null, opps: defaultOpponents(), life: 40, layout: "round", random: true };
+  setup = { deck: deck?.slug || null, opps: defaultOpponents(), life: 40, layout: null, random: true };
   openSheet(setupPage, { full: false });
 }
 
@@ -89,16 +97,15 @@ function setupPage({ push }) {
     title: "Partie starten",
     body: `
       <p class="hint-small">Das Handy liegt in der Mitte, jedes Feld zeigt zu seinem Spieler. Oben + und unten − tippen, gedrückt halten zählt weiter.</p>
-      <div class="field-label">Mitspieler <span class="hint">${count} am Tisch, du unten</span></div>
+      <div class="field-label">Mitspieler <span class="hint">${count} am Tisch</span></div>
       <div class="chips" id="lc-opps">
         <span class="chip me">${icon("table", "xs")} ${esc(deck ? shortName(deck.commanders[0]) : "Ich")}</span>
         ${setup.opps.map((o, i) => `<button class="chip on" type="button" data-remove="${i}" aria-label="${esc(shortName(o.commander))} entfernen">${esc(shortName(o.commander || oppName(oppBy(o.id))))} ${icon("x", "xs")}</button>`).join("")}
         ${count < 6 ? `<button class="chip add" type="button" id="lc-add">${icon("plus")}Gegner</button>` : ""}
       </div>
       ${recent.length && count < 6 ? `<div class="chips scroll" id="lc-recent">${recent.map((o) => `<button class="chip" type="button" data-pick="${esc(o.id)}">${esc(shortName(o.commanders[0] || oppName(o)))}</button>`).join("")}</div>` : ""}
-      <div class="field-label">Anordnung</div>
-      <div class="chips" id="lc-layouts">${layouts.map((l) => `<button class="chip" type="button" data-layout="${l.key}" aria-pressed="${setup.layout === l.key}">${esc(l.name)}</button>`).join("")}</div>
-      <div class="lc-preview" id="lc-preview">${previewHtml(layouts.find((l) => l.key === setup.layout))}</div>
+      <div class="field-label">Anordnung <span class="hint">das Handy liegt flach in der Mitte</span></div>
+      ${galleryHtml(layouts, setup.layout)}
       <div class="field-label">Startleben</div>
       <div class="chips" id="lc-life">${LIFE_OPTIONS.map((n) => `<button class="chip" type="button" data-life="${n}" aria-pressed="${setup.life === n}">${n}</button>`).join("")}</div>
       <label class="toggle-row"><span class="main"><span class="title">Startspieler auslosen</span></span><input type="checkbox" id="lc-random" ${setup.random ? "checked" : ""}></label>`,
@@ -145,19 +152,31 @@ const pickRows = (opps) => opps.length ? opps.map((o) => `<button class="row" ty
     <span class="main"><span class="title">${esc(shortName(o.commanders[0] || oppName(o)))}</span><span class="subtitle">${esc([o.player, o.commanders.join(" + ")].filter(Boolean).join(" · "))}</span></span>${icon("chev-r", "sm chev")}</button>`).join("")
   : `<p class="hint-small">Keine Gegnerdecks – trag welche unter „Gegner“ ein.</p>`;
 
-function previewHtml(layout) {
-  if (!layout) return "";
-  const cells = assignCells(layout, layout.cells.length);
-  return `<div class="lc-mini" data-grid="${layout.rows} ${layout.cols}">${cells.map((cell, i) => `<span data-area="${area(cell)}" data-rot="${cell.rot}">${cell.mine ? "ich" : i + 1}</span>`).join("")}</div>`;
+/** The layout gallery: one mini grid per layout, the bar marks the edge a player sits at, my cell is coloured. */
+function galleryHtml(layouts, selected) {
+  return `<div class="lc-gallery">${layouts.map((l) => `<button class="lc-mini" type="button" data-layout="${l.key}" aria-pressed="${selected === l.key}" aria-label="${esc(l.name)}" data-grid="${l.rows} ${l.cols}">${
+    assignCells(l).map((cell) => `<span class="${cell.mine ? "me" : ""}" data-area="${area(cell)}" data-rot="${cell.rot}">${cell.mine ? "ich" : ""}</span>`).join("")}</button>`).join("")}</div>
+  <p class="hint-small lc-gallery-name">${esc(layouts.find((l) => l.key === selected)?.name || "")}</p>`;
 }
 
-/** Cells in seat order; my seat is the last upright one (bottom), opponents fill the rest clockwise. */
-function assignCells(layout, count) {
-  const cells = layout.cells.slice(0, count).map((x) => ({ ...x }));
-  let mine = -1;
-  for (let i = cells.length - 1; i >= 0; i--) if (cells[i].rot === 0) { mine = i; break; }
-  if (mine < 0) mine = cells.length - 1;
-  cells[mine].mine = true;
+/** Where a cell's player sits, as an angle around the table (screen coordinates: increasing = clockwise). */
+function seatAngle(cell, layout) {
+  const cx = (cell.c - 1 + cell.cs / 2) / layout.cols, cy = (cell.r - 1 + cell.rs / 2) / layout.rows;
+  const [sx, sy] = cell.rot === 0 ? [cx, 1.3] : cell.rot === 180 ? [cx, -0.3] : cell.rot === -90 ? [-0.3, cy] : [1.3, cy];
+  return Math.atan2(sy - 0.5, sx - 0.5);
+}
+
+/** Cells with ``seat``: 0 = me, then the opponents clockwise around the table from my seat. */
+function assignCells(layout) {
+  const cells = layout.cells.map((x) => ({ ...x }));
+  const mine = cells[layout.mine];
+  mine.mine = true;
+  mine.seat = 0;
+  const a0 = seatAngle(mine, layout);
+  cells.filter((x) => !x.mine)
+    .map((x) => ({ x, a: (seatAngle(x, layout) - a0 + 4 * Math.PI) % (2 * Math.PI) }))
+    .sort((p, q) => p.a - q.a)
+    .forEach((o, i) => { o.x.seat = i + 1; });
   return cells;
 }
 
@@ -193,20 +212,45 @@ function show() {
 
 function render() {
   const layout = layoutOf(c);
-  const cells = assignCells(layout, c.players.length);
-  const others = c.players.filter((p) => !p.me);
-  const order = [c.players.find((p) => p.me), ...others];
-  const panels = cells.map((cell, i) => {
-    const p = cell.mine ? order[0] : others[cells.slice(0, i).filter((x) => !x.mine).length];
-    return { cell, p };
-  });
-  return `<div class="lc" data-grid="${layout.rows} ${layout.cols}">
+  const cells = assignCells(layout);
+  const order = [c.players.find((p) => p.me), ...c.players.filter((p) => !p.me)];
+  const panels = cells.map((cell) => ({ cell, p: order[cell.seat] }));
+  const menu = dmgTo
+    ? `<button class="lc-menu dmg" type="button" id="lc-menu" aria-label="Zurück zum Spiel">${icon("sword")}</button>`
+    : `<button class="lc-menu" type="button" id="lc-menu" aria-label="Menü: Zug, Würfel, Partie beenden">${icon("sliders")}<span class="lc-turn">${c.turn}</span></button>`;
+  return `<div class="lc ${dmgTo ? "dmg-mode" : ""}" data-grid="${layout.rows} ${layout.cols}">
     ${panels.map(({ cell, p }) => `<div class="lc-cell" data-area="${area(cell)}" data-rot="${cell.rot}" data-cell="${p.id}">${pad(p)}</div>`).join("")}
-    <button class="lc-menu" type="button" id="lc-menu" aria-label="Menü: Zug, Würfel, Partie beenden">${icon("sliders")}<span class="lc-turn">${c.turn}</span></button>
+    ${menu}
+  </div>`;
+}
+
+/** Commander-damage mode (like Lotus): the hit player's panel says so, every other panel counts the damage its
+ *  commander has dealt to them – plus/minus like life, and the life goes down with it. */
+function dmgPad(p) {
+  const to = c.players.find((x) => x.id === dmgTo);
+  if (p.id === dmgTo) return `<div class="lc-pad receiver" data-p="${p.id}" data-bg="${esc(p.colors)}">
+    <div class="lc-face">
+      <div class="lc-big">Commander-Schaden</div>
+      <div class="lc-sub">den ${esc(playerTitle(p))} bekommen hat · Leben <b data-rlife>${p.life}</b></div>
+      <button class="btn pill" type="button" data-dmg-back>Zurück zum Spiel</button>
+    </div>
+  </div>`;
+  const n = to.dmg[p.id] || 0;
+  const who = shortName(p.commander) || playerTitle(p);
+  return `<div class="lc-pad dmg ${n >= 21 ? "lethal" : ""}" data-p="${p.id}" data-bg="${esc(p.colors)}">
+    <button class="lc-half plus" type="button" data-dmg-step="1" data-src="${p.id}" aria-label="Schaden von ${esc(who)}: plus eins"></button>
+    <button class="lc-half minus" type="button" data-dmg-step="-1" data-src="${p.id}" aria-label="Schaden von ${esc(who)}: minus eins"></button>
+    <div class="lc-face">
+      <div class="lc-name static">${icon("sword", "xs")}${esc(who)}</div>
+      <div class="lc-life" data-dmgval="${p.id}">${n}</div>
+      <div class="lc-delta" data-delta="dmg-${p.id}" hidden></div>
+      <div class="lc-sub">von 21</div>
+    </div>
   </div>`;
 }
 
 function pad(p) {
+  if (dmgTo && (p.id === dmgTo || !p.out)) return dmgPad(p);
   const dmgSum = Object.values(p.dmg).reduce((a, b) => a + b, 0);
   const active = c.players[c.active]?.id === p.id;
   return `<div class="lc-pad ${p.out ? "out" : ""} ${active ? "active" : ""}" data-p="${p.id}" data-bg="${esc(p.colors)}">
@@ -261,26 +305,31 @@ function rerender() {
 }
 
 function bindAll() {
-  for (const b of $$("[data-life]", el)) {
-    b.addEventListener("pointerdown", (e) => { e.preventDefault(); startHold(b.dataset.p, Number(b.dataset.life)); });
+  const holdable = (b, run) => {
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); startHold(run); });
     for (const ev of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(ev, stopHold);
     b.addEventListener("contextmenu", (e) => e.preventDefault());
-  }
+  };
+  for (const b of $$("[data-life]", el)) holdable(b, () => {
+    const p = c.players.find((x) => x.id === b.dataset.p);
+    if (!p || p.out) return;
+    snapshotOnce(p.id);
+    change(p, Number(b.dataset.life));
+  });
+  for (const b of $$("[data-dmg-step]", el)) holdable(b, () => changeDmg(b.dataset.src, Number(b.dataset.dmgStep)));
+  for (const b of $$("[data-dmg-back]", el)) b.addEventListener("click", leaveDmg);
   for (const b of $$("[data-player]", el)) b.addEventListener("click", () => playerSheet(b.dataset.player));
-  for (const b of $$("[data-dmg]", el)) b.addEventListener("click", () => damageSheet(b.dataset.dmg));
+  for (const b of $$("[data-dmg]", el)) b.addEventListener("click", () => enterDmg(b.dataset.dmg));
   for (const b of $$("[data-poison]", el)) b.addEventListener("click", () => poisonSheet(b.dataset.poison));
   for (const pad of $$(".lc-pad.out", el)) pad.addEventListener("click", (e) => { if (!e.target.closest("button")) revive(pad.dataset.p); });
-  $("#lc-menu", el).addEventListener("click", menuSheet);
+  $("#lc-menu", el).addEventListener("click", () => (dmgTo ? leaveDmg() : menuSheet()));
 }
 
 // ---------- life: tap and hold ----------
-function startHold(pid, step) {
+function startHold(run) {
   stopHold();
-  const p = c.players.find((x) => x.id === pid);
-  if (!p || p.out) return;
-  snapshotOnce(pid);
-  change(p, step);
-  hold = { pid, step, timer: setTimeout(function tick() { change(p, step); hold.timer = setTimeout(tick, HOLD_EVERY); }, HOLD_AFTER) };
+  run();
+  hold = { timer: setTimeout(function tick() { run(); hold.timer = setTimeout(tick, HOLD_EVERY); }, HOLD_AFTER) };
 }
 function stopHold() { if (hold) { clearTimeout(hold.timer); hold = null; } }
 
@@ -383,36 +432,35 @@ function lifeSheet(pid) {
   }));
 }
 
-function damageSheet(pid) {
+function enterDmg(pid) {
   const p = c.players.find((x) => x.id === pid);
-  const sources = c.players.filter((x) => x.id !== pid);
-  let withLife = true;
-  const page = () => ({
-    title: `Commander-Schaden an ${playerTitle(p)}`,
-    body: `
-      <p class="hint-small">21 Schaden von einem Commander = raus. Die Lebenspunkte gehen mit runter, solange der Schalter an ist.</p>
-      <div class="group">${sources.map((s) => `<div class="row lc-dmg-row"><span class="main"><span class="title">${esc(shortName(s.commander) || playerTitle(s))}</span><span class="subtitle">${esc(s.me ? "dein Commander" : s.name || "")}</span></span>
-        <span class="lc-stepper"><button class="btn" type="button" data-step="-1" data-src="${s.id}" aria-label="weniger">−</button><b data-val="${s.id}">${p.dmg[s.id] || 0}</b><button class="btn" type="button" data-step="1" data-src="${s.id}" aria-label="mehr">+</button></span></div>`).join("")}</div>
-      <label class="toggle-row"><span class="main"><span class="title">Leben mit abziehen</span></span><input type="checkbox" id="lc-withlife" ${withLife ? "checked" : ""}></label>`,
-    foot: `<button class="btn primary big" type="button" id="lc-done">Fertig</button>`,
-    bind(root) {
-      snapshot();
-      for (const b of $$("[data-step]", root)) b.addEventListener("click", () => {
-        const step = Number(b.dataset.step), src = b.dataset.src;
-        const next = Math.max(0, (p.dmg[src] || 0) + step);
-        const applied = next - (p.dmg[src] || 0);
-        if (!applied) return;
-        p.dmg[src] = next;
-        if (withLife) p.life -= applied;
-        vibrate(6);
-        $(`[data-val="${src}"]`, root).textContent = next;
-        persist();
-      });
-      $("#lc-withlife", root).addEventListener("change", (e) => { withLife = e.target.checked; });
-      $("#lc-done", root).addEventListener("click", () => { closeSheet(); checkOut(p); rerender(); });
-    },
-  });
-  openSheet(page);
+  if (!p || p.out) return;
+  snapshot();
+  dmgTo = pid;
+  rerender();
+}
+function leaveDmg() {
+  const to = c.players.find((x) => x.id === dmgTo);
+  dmgTo = null;
+  rerender();
+  if (to) checkOut(to);
+}
+function changeDmg(src, step) {
+  const to = c.players.find((x) => x.id === dmgTo);
+  if (!to) return;
+  const next = Math.max(0, (to.dmg[src] || 0) + step);
+  const applied = next - (to.dmg[src] || 0);
+  if (!applied) return;
+  to.dmg[src] = next;
+  to.life -= applied;
+  vibrate(6);
+  const val = el?.querySelector(`[data-dmgval="${src}"]`);
+  if (val) { val.textContent = next; val.closest(".lc-pad").classList.toggle("lethal", next >= 21); }
+  const life = el?.querySelector("[data-rlife]");
+  if (life) life.textContent = to.life;
+  showDelta(`dmg-${src}`, applied);
+  persist();
+  if (next >= 21 || to.life <= 0) { stopHold(); leaveDmg(); }
 }
 
 function poisonSheet(pid) {
@@ -483,8 +531,7 @@ function layoutSheet() {
   const layouts = LAYOUTS[c.players.length];
   openSheet(() => ({
     title: "Anordnung",
-    body: `<div class="chips" id="lc-layouts">${layouts.map((l) => `<button class="chip" type="button" data-layout="${l.key}" aria-pressed="${c.layout === l.key}">${esc(l.name)}</button>`).join("")}</div>
-      <div class="lc-preview">${previewHtml(layoutOf(c))}</div>`,
+    body: galleryHtml(layouts, layoutOf(c).key),
     bind(root) {
       for (const b of $$("[data-layout]", root)) b.addEventListener("click", () => { c.layout = b.dataset.layout; persist(); closeSheet(); rerender(); });
       paintGrid(root);
@@ -532,5 +579,6 @@ function end() {
   c = null;
   save(KEY, null);
   stopHold();
+  dmgTo = null;
   closeScreen?.();
 }

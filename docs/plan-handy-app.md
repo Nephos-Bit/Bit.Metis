@@ -326,15 +326,17 @@ schneller.
 
 ## Lebenspunktezähler „Partie läuft“
 
-Das Handy liegt in der Mitte des Tischs, jeder Spieler bekommt ein Feld, das zu seinem Platz gedreht ist – wie bei
-den üblichen Zähler-Apps (Lotus u. a.). Je Spielerzahl gibt es mehrere Anordnungen: *Rund um den Tisch* (gegenüber
-auf dem Kopf, bei vier Spielern 2×2), *An den Seiten* (links und rechts um 90° gedreht, so sitzen vier Leute perfekt
-an einem Tisch), *Alle zu mir* (alle Felder lesbar für den, der das Handy hält). Die Anordnung lässt sich während der
-Partie wechseln.
+Das Handy liegt flach in der Mitte des Tischs, jeder Spieler bekommt ein Feld, das zu seiner Tischkante gedreht ist –
+wie bei Lotus. Je Spielerzahl gibt es eine Galerie von Anordnungen als Mini-Raster (ein Strich markiert die Kante, an
+der jemand sitzt, das eigene Feld ist farbig): bei vier Spielern *An den Seiten* (alle um 90° gedreht, der Lotus-
+Standard), *Zwei gegenüber, zwei bei mir*, *Jeder an seiner Kante*, *Alle zu mir*; bei drei, fünf und sechs Spielern
+entsprechend mit Kopfenden und Längsseiten. Die Anordnung lässt sich während der Partie wechseln.
 
 - **Bedienen:** obere Hälfte +1, untere −1, gedrückt halten zählt weiter; die Änderung steht kurz als „−5“ im Feld.
-  Der Name öffnet den Spieler (Monarch, Initiative, ist dran, Leben setzen, raus/zurück). Die zwei Chips: Commander-
-  Schaden je Gegner (optional mit Leben abziehen) und Gift.
+  Der Name öffnet den Spieler (Monarch, Initiative, ist dran, Leben setzen, raus/zurück). Zwei Chips: Gift und
+  Commander-Schaden. Letzterer schaltet wie bei Lotus den ganzen Bildschirm um: das Feld des Getroffenen sagt
+  „Commander-Schaden“, jedes andere Feld zählt den Schaden seines Commanders (oben +, unten −, halten zählt weiter),
+  die Lebenspunkte gehen mit runter; bei 21 oder 0 Leben geht es automatisch zurück ins Spiel.
 - **Raus:** bei 0 Leben, 10 Gift oder 21 Commander-Schaden von einem Gegner wird das Feld abgedunkelt („tippen =
   zurück“). Bleibt einer übrig, bietet die App an, die Partie zu beenden.
 - **Mitte:** der runde Knopf zeigt den Zug und öffnet das Menü: nächster Zug, Rückgängig (letzte 40 Schritte),
