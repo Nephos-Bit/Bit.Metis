@@ -275,6 +275,11 @@ ein Befehl auf dem Server.
     bereit ist und was Claude gerade tut („liest Kartentexte …“). Kommt eine Frage ohne Netz, wartet sie auf dem Handy;
     ist der PC aus, wartet sie auf dem Server. Am PC lässt sich das unter *Einstellungen → Sync zwischen Geräten →
     „Fragen vom Handy beantworten“* abschalten. Die Gespräche stehen auch am PC unter „Frag Claude“.
+  - **Partie läuft (Lebenspunkte):** „Partie starten“ auf dem Tisch-Tab legt das Handy in die Mitte: jeder Spieler
+    bekommt ein zu ihm gedrehtes Feld (Anordnungen „Rund um den Tisch“, „An den Seiten“, „Alle zu mir“), oben tippen
+    +1, unten −1, halten zählt weiter. Dazu Commander-Schaden je Gegner, Gift, Monarch, Initiative, Zugzähler,
+    Rückgängig, Würfel und Münze. Wer auf 0 Leben, 10 Gift oder 21 Commander-Schaden fällt, ist raus. „Partie
+    beenden“ öffnet das Partie-Formular mit Ergebnis, Zug, Gegnern und Startspieler schon ausgefüllt.
   - **Vorschau:** „Erst mal mit Beispieldaten ansehen“ zeigt die App ohne Kopplung.
 
 ## Desktop-App (Windows)

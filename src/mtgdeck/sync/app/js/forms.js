@@ -23,10 +23,11 @@ function freshGame() {
   return { id: uid(), deck: deck?.slug, result: null, opps, rematch: recent && opps.length > 0, issues: [], turn: null, how: null, started: null, mvp: "", note: "" };
 }
 
-export function gameSheet() {
+export function gameSheet(prefill = null) {
   const draft = load(KEY_DRAFT, null);
-  const restored = !!(draft && state.snap.decks.some((d) => d.slug === draft.deck));
+  const restored = !prefill && !!(draft && state.snap.decks.some((d) => d.slug === draft.deck));
   g = restored ? draft : freshGame();
+  if (prefill) Object.assign(g, { rematch: false }, prefill, { id: uid(), deck: prefill.deck && state.snap.decks.some((d) => d.slug === prefill.deck) ? prefill.deck : g.deck });
   g.restored = restored;
   openSheet(gamePage, { full: true, onClose: () => { if (g) save(KEY_DRAFT, g.saved ? null : g); g = null; } });
 }

@@ -321,8 +321,30 @@ schneller.
 - kein Konto und kein Login außer der Kopplung;
 - keine Benachrichtigungen, keine Bewertungsbitten;
 - kein Deck-Bearbeiten auf dem Handy (dafür ist der PC da);
-- kein Lebenspunkte-Zähler. Später denkbar: Ein Zähler, der Sieger und Zug gleich mitliefert, wäre die konsequenteste
-  Form von „Vorbelegen“. Das ist ein eigenes Thema.
+- der Zähler „Partie läuft“ (unten) kennt nur Leben, Gift, Commander-Schaden, Monarch, Initiative und den Zug –
+  keine Karten und keinen Abgleich; er liefert am Ende nur das Partie-Formular vorbelegt.
+
+## Lebenspunktezähler „Partie läuft“
+
+Das Handy liegt in der Mitte des Tischs, jeder Spieler bekommt ein Feld, das zu seinem Platz gedreht ist – wie bei
+den üblichen Zähler-Apps (Lotus u. a.). Je Spielerzahl gibt es mehrere Anordnungen: *Rund um den Tisch* (gegenüber
+auf dem Kopf, bei vier Spielern 2×2), *An den Seiten* (links und rechts um 90° gedreht, so sitzen vier Leute perfekt
+an einem Tisch), *Alle zu mir* (alle Felder lesbar für den, der das Handy hält). Die Anordnung lässt sich während der
+Partie wechseln.
+
+- **Bedienen:** obere Hälfte +1, untere −1, gedrückt halten zählt weiter; die Änderung steht kurz als „−5“ im Feld.
+  Der Name öffnet den Spieler (Monarch, Initiative, ist dran, Leben setzen, raus/zurück). Die zwei Chips: Commander-
+  Schaden je Gegner (optional mit Leben abziehen) und Gift.
+- **Raus:** bei 0 Leben, 10 Gift oder 21 Commander-Schaden von einem Gegner wird das Feld abgedunkelt („tippen =
+  zurück“). Bleibt einer übrig, bietet die App an, die Partie zu beenden.
+- **Mitte:** der runde Knopf zeigt den Zug und öffnet das Menü: nächster Zug, Rückgängig (letzte 40 Schritte),
+  W6/W20/Münze, Startspieler, Anordnung, Partie beenden, verwerfen.
+- **Start:** „Partie starten“ auf dem Tisch-Tab, die Gegner sind aus der letzten Partie (8 h) vorbelegt, Startleben
+  40/30/20, Startspieler auslosen. Eine laufende Partie überlebt Neuladen und App-Wechsel (localStorage) und steht
+  als Banner oben auf dem Tisch-Tab.
+- **Ende:** „Partie beenden“ schlägt Ergebnis und „Woran lag’s“ vor (ich raus durch Commander-Schaden → Niederlage,
+  „durch Commander-Schaden“) und öffnet das Partie-Formular mit Deck, Ergebnis, Zug, Gegnern und Startspieler
+  vorbelegt. Erst das Speichern dort erreicht den Server – der Zähler selbst wird nicht synchronisiert.
 
 ## Schritte
 

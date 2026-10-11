@@ -5,16 +5,41 @@
 import { $, esc, icon, reducedMotion } from "./util.js";
 
 // ---------- back button closes overlays ----------
+// Closing is synchronous (so ``closeSheet(); present(...)`` works); the history entry is removed with
+// history.back(), whose popstate arrives later and must not close the next overlay – pushes made in the
+// meantime wait for it.
 const overlays = [];
+let pending = 0;   // history.back() calls whose popstate has not arrived yet
+let deferred = 0;  // pushState calls waiting for that popstate
+let flushTimer = 0;
+function flushDeferred() {
+  pending = 0;
+  while (deferred > 0) { deferred--; history.pushState({ overlay: overlays.length }, ""); }
+}
 function openOverlay(close) {
   overlays.push(close);
-  history.pushState({ overlay: overlays.length }, "");
+  if (pending) deferred++;
+  else history.pushState({ overlay: overlays.length }, "");
 }
 function closeOverlay() {
-  if (overlays.length && history.state?.overlay) history.back();  // popstate does the closing
-  else overlays.pop()?.();
+  const close = overlays.pop();
+  if (!close) return;
+  if (history.state?.overlay) {
+    pending++;
+    history.back();
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(flushDeferred, 800);  // the popstate never came (odd history): don't wait forever
+  }
+  close();
 }
-addEventListener("popstate", () => { overlays.pop()?.(); });
+addEventListener("popstate", () => {
+  if (pending) {
+    pending--;
+    if (!pending) { clearTimeout(flushTimer); flushDeferred(); }
+    return;
+  }
+  overlays.pop()?.();
+});
 
 // ---------- the visible area: sheets sit on its bottom edge, above the keyboard ----------
 // iOS can make the layout viewport taller than the screen (above all in a Home Screen app), and the keyboard only
@@ -170,15 +195,22 @@ export function toast(msg, { sub = "", action = null, ms = 4500, ok = false } = 
 // ---------- full screen (Rule 0 to hand across the table) ----------
 let wake = null;
 export function present(html, { actions = "", bind = null, onClose = null } = {}) {
+  presentRaw(`<div class="present" role="dialog" aria-modal="true" aria-label="Rule 0"><div class="inner">${html}</div></div>
+    <div class="present-actions">${actions}<button class="btn primary" type="button" data-present-close>Schließen</button></div>`,
+  { bind(el) { el.querySelector("[data-present-close]").addEventListener("click", closeOverlay); bind?.(el); }, onClose });
+}
+
+/** A bare full screen (the life counter): keeps the screen awake, the back button closes it; returns close(). */
+export function presentRaw(html, { bind = null, onClose = null } = {}) {
   const el = $("#present");
-  el.innerHTML = `<div class="present" role="dialog" aria-modal="true" aria-label="Rule 0"><div class="inner">${html}</div></div>
-    <div class="present-actions">${actions}<button class="btn primary" type="button" data-present-close>Schließen</button></div>`;
+  el.innerHTML = html;
   el.hidden = false;
   document.documentElement.style.overflow = "hidden";
-  el.querySelector("[data-present-close]").addEventListener("click", closeOverlay);
   bind?.(el);
   navigator.wakeLock?.request("screen").then((w) => { wake = w; }, () => {});
+  let open = true;
   openOverlay(() => {
+    open = false;
     el.hidden = true;
     el.innerHTML = "";
     document.documentElement.style.overflow = "";
@@ -186,6 +218,7 @@ export function present(html, { actions = "", bind = null, onClose = null } = {}
     wake = null;
     onClose?.();
   });
+  return () => { if (open) closeOverlay(); };
 }
 
 // ---------- compact top bar ----------
