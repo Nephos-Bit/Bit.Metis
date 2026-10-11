@@ -95,11 +95,14 @@ img { max-width: 100%; }
   position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-4);
   padding: var(--space-5) var(--space-4); background: var(--surface); border-right: 1px solid var(--border);
 }
+.sidebar > * { flex-shrink: 0; }  /* only the deck section gives way when the window is short */
 .sidebar > .brand { padding: 0 4px; font-size: 14.5px; margin-bottom: var(--space-1); }
-.nav-section { display: flex; flex-direction: column; gap: var(--space-2); min-height: 0; }
+/* the deck list scrolls on its own, so the links below it stay in reach; it shrinks to a minimum, then the whole
+   sidebar scrolls (min-height: 0 without an inner scroll let a long list paint over the links below) */
+.sidebar > .nav-section { display: flex; flex-direction: column; gap: var(--space-2); flex: 1 1 auto; min-height: 212px; }  /* title + filter + at least ~3 decks; below that the whole sidebar scrolls */
 .nav-title { font-size: var(--fs-xs); font-weight: 650; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 0 var(--space-2); }
 .filter { height: 32px; font-size: var(--fs-sm); }
-.deck-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.deck-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .deck-list a { display: block; padding: 7px var(--space-2); border-radius: var(--radius); color: var(--text); text-decoration: none; }
 .deck-list a:hover { background: var(--surface-2); }
 .deck-list a[aria-current="page"] { background: var(--accent-soft); color: var(--on-accent-soft); }
