@@ -289,7 +289,8 @@ des Workflows „Desktop“.
   Port mit zufälligem Token und zeigt es im Fenster. Stirbt das Backend, startet die Hülle es neu; klappt das
   fünfmal nicht, zeigt die Startseite das Protokoll und bietet einen neuen Versuch an.
 - **Daten:** `%APPDATA%\MTG Deckbuilder` (Decks, Sammlung, Blacklist, Tischregeln, Sicherungen, Sync-Zustand),
-  Cache in `%LOCALAPPDATA%\MTG Deckbuilder\cache`, Protokoll `%APPDATA%\MTG Deckbuilder\logs\backend.log`.
+  Cache in `%LOCALAPPDATA%\app.mtgdeck.desktop\cache` (das Programm selbst liegt in `%LOCALAPPDATA%\MTG Deckbuilder`),
+  Protokoll `%APPDATA%\MTG Deckbuilder\logs\backend.log`.
   Bestehende Daten aus einem Projektordner kommen per Sync (siehe oben) oder über Einstellungen → Sicherung
   hochladen in die App.
 - **Tray:** Schließen versteckt das Fenster, die App läuft weiter (Sync, Fragen vom Handy). Rechtsklick auf das
@@ -301,8 +302,8 @@ des Workflows „Desktop“.
   anmelden“** startet die Anmeldung im Terminal der App (der Browser öffnet sich zum Bestätigen). Eine bestehende
   Anmeldung von Claude Code auf demselben Rechner (`%USERPROFILE%\.claude`) gilt auch.
 - **Updates:** Die App prüft kurz nach dem Start und einmal täglich die Releases. Eine neue Version meldet sie mit
-  einem Hinweis; Einstellungen → Desktop-App zeigt sie und installiert sie auf Knopfdruck (der Installer läuft im
-  Hintergrund durch, die App startet neu). Updates sind signiert – der öffentliche Schlüssel steckt in
+  einem Hinweis; Einstellungen → Desktop-App zeigt sie und installiert sie auf Knopfdruck (die App beendet erst ihr
+  Backend, dann läuft der Installer im Hintergrund durch und startet sie neu). Updates sind signiert – der öffentliche Schlüssel steckt in
   `desktop/src-tauri/tauri.conf.json`, nur damit signierte Pakete werden angenommen.
 - **Entwicklung:** `uv run pyinstaller desktop/sidecar/backend.spec` baut das Backend nach `dist/mtgdeck-backend/`;
   `cd desktop && npx @tauri-apps/cli@^2 dev` startet die Hülle damit (oder mit `MTGDECK_BACKEND=<Pfad zur Exe>`).
@@ -577,7 +578,7 @@ Der Server lässt sich auch in anderen MCP-Clients nutzen (z. B. Claude Desktop)
 | `MTG_DATA_DIR` / `MTG_CACHE_DIR` | `~/.cache/mtgdeck` | Speicherort DB / HTTP-Cache |
 | `MTG_CACHE_TTL` | `86400` | HTTP-Cache-Dauer in Sekunden |
 | `MTG_HOME` | Projektordner (Desktop-App: `%APPDATA%\MTG Deckbuilder`) | alle Nutzerdaten: Decks, Sammlung, Blacklist, Tischregeln, Sicherungen, Proxies, Einstellungen, Sync-Stand |
-| `MTG_CACHE_HOME` | `~/.cache/mtgdeck` (Desktop-App: `%LOCALAPPDATA%\MTG Deckbuilder\cache`) | Kartendatenbank und HTTP-Cache |
+| `MTG_CACHE_HOME` | `~/.cache/mtgdeck` (Desktop-App: `%LOCALAPPDATA%\app.mtgdeck.desktop\cache`) | Kartendatenbank und HTTP-Cache |
 | `MTG_GUI_TOKEN` | – | Zugriffstoken der Oberfläche (setzt die Desktop-App; ohne Token ist die Oberfläche für diesen Rechner offen) |
 | `MTG_DECKS_DIR` | `./decks` | Speicherort der Decks |
 | `MTG_BLACKLIST_FILE` | `./blacklist.txt` | Blacklist-Datei |

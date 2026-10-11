@@ -139,7 +139,8 @@ desktop/                      Tauri-2-Projekt (Rust-Hülle, rund 450 Zeilen)
   Cookie. Stirbt das Backend, startet die Hülle es nach 1, 2, 5, 5, 5 s neu; danach zeigt die Startseite das Ende
   des Protokolls und „Nochmal versuchen“. Ein langer gesunder Lauf setzt den Zähler zurück.
 - **Daten:** `--data` = `%APPDATA%\MTG Deckbuilder` (Decks, Sammlung, Einstellungen, Sync-Zustand), Cache
-  `%LOCALAPPDATA%\MTG Deckbuilder\cache`, Protokoll `<data>\logs\backend.log` (plus der vorige Lauf als
+  `%LOCALAPPDATA%\app.mtgdeck.desktop\cache` (nicht im Programmordner `%LOCALAPPDATA%\MTG Deckbuilder`, den der
+  Installer pro Benutzer anlegt), Protokoll `<data>\logs\backend.log` (plus der vorige Lauf als
   `backend.1.log`). Vorhandene Daten kommen per Sync oder über „Sicherung hochladen“ in die App; `MTG_HOME`
   in der Umgebung überstimmt den Ordner.
 - **Claude:** Der Agent-SDK bringt die CLI mit (das Windows-Wheel erst ab 0.2.164, deshalb die Mindestversion in
@@ -200,6 +201,15 @@ von `claude auth status --json`. Der KI-Status in den Einstellungen war seit dem
 (verwaister Aufruf nach dem entfernten Fragen-Panel) – beim Prüfen im Browser gefunden und behoben.
 
 **v0.1.0 auf einem echten Windows:** Das Fenster zeigte nur das 401-JSON der Token-Sperre. Das Cookie war `SameSite=Strict`, und WebView2 schickt ein Strict-Cookie nicht auf der Navigation, die auf die Weiterleitung von `/?token=` folgt, weil die Startseite der Hülle auf `tauri.localhost` liegt (anderer Site). Mit `Lax` lädt die App; fremde Seiten bleiben durch Origin-Prüfung und CORS draußen (in Chromium nachgestellt, `test_launch.py`). Behoben in v0.1.1.
+
+**v0.1.1 → v0.1.2 auf einem echten Windows:** Download und Start des Installers liefen, das Kopieren scheiterte mit
+„Schreiben nicht möglich“. Der Tauri-Updater beendet nur das Hauptprogramm; `mtgdeck-backend.exe` samt MCP-Server und
+`claude.exe` lief weiter und hielt die Dateien in `resources\backend` offen. Behoben doppelt: die Hülle beendet vor
+dem Installieren den ganzen Prozessbaum (`taskkill /T`), und ein NSIS-Hook (`hooks.nsh`, `installerHooks`) tut das
+vor dem Kopieren noch einmal – so klappt auch das Update aus einer älteren App und eine Installation über eine
+laufende. Dabei aufgefallen: Der Cache lag im Programmordner (`%LOCALAPPDATA%\MTG Deckbuilder\cache`), jetzt unter
+`%LOCALAPPDATA%\app.mtgdeck.desktop\cache`, ein vorhandener wird einmal umgezogen. Außerdem zwei Layoutfehler aus
+dem Alltag mit echten Daten: lange Decklisten in der Seitenleiste und lange Notizen bei Gegnerdecks.
 
 **Stand 5e.** Alles für Releases ist im Repository; was fehlt, kann nur der Besitzer tun: die beiden Secrets anlegen
 und den ersten Tag setzen (siehe „Veröffentlichen“). Der eigentliche Nachweis „v0.1.0 installiert, v0.1.1 kommt von

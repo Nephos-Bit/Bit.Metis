@@ -942,7 +942,7 @@ kbd { font: 600 11px var(--mono); padding: 1px 5px; border: 1px solid var(--bord
 
 /* ---------- collective print orders ---------- */
 .orders-list { display: grid; gap: var(--space-3); }
-.order-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-4); text-decoration: none; color: var(--text); }
+.order-row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-4); text-decoration: none; color: var(--text); min-width: 0; }  /* a grid item: without min-width 0 a long one-line note widens the row past the page */
 .order-row:hover { border-color: var(--accent); }
 .order-row h3 { font-size: var(--fs-md); margin-bottom: 2px; }
 #order-add-kind { margin-bottom: var(--space-3); }

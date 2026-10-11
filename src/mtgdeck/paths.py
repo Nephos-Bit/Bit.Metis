@@ -7,7 +7,9 @@ Three roots, each overridable by one environment variable:
   app-data folder when running as the packaged desktop app (``%APPDATA%\\MTG Deckbuilder`` on Windows).
   The per-file variables (``MTG_DECKS_DIR`` …) still win over it.
 - ``cache_home()`` – card database and HTTP cache (large, re-creatable). ``MTG_CACHE_HOME``; otherwise
-  ``~/.cache/mtgdeck`` or ``%LOCALAPPDATA%\\MTG Deckbuilder\\cache`` when packaged.
+  ``~/.cache/mtgdeck`` or ``%LOCALAPPDATA%\\app.mtgdeck.desktop\\cache`` when packaged (the desktop shell passes
+  ``--cache``; the folder is named after the app identifier because a per-user install itself lives in
+  ``%LOCALAPPDATA%\\MTG Deckbuilder``).
 - ``agent_root()`` – the folder Claude runs in (its ``.claude/skills`` and ``CLAUDE.md``). ``MTG_AGENT_ROOT``;
   otherwise the repository root, or the bundled ``agent/`` folder of the packaged app.
 
@@ -21,6 +23,7 @@ import sys
 from pathlib import Path
 
 APP_NAME = "MTG Deckbuilder"
+APP_ID = "app.mtgdeck.desktop"  # the desktop app's identifier (tauri.conf.json)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -44,7 +47,7 @@ def _platform_data() -> Path:
 
 def _platform_cache() -> Path:
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / APP_NAME / "cache"
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / APP_ID / "cache"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Caches" / APP_NAME
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "mtgdeck"

@@ -67,7 +67,7 @@ pub fn start(app: AppHandle, backend: Backend, autostart_item: CheckMenuItem<Wry
                         }
                     }
                     "check_update" => updates::check(app.clone(), updates.clone()),
-                    "install_update" => updates::install(app.clone(), updates.clone()),
+                    "install_update" => updates::install(app.clone(), updates.clone(), backend.clone()),
                     _ => {}
                 }
             }

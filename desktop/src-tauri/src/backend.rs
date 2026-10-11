@@ -52,11 +52,19 @@ pub fn dirs(app: &AppHandle) -> Dirs {
     let data = std::env::var_os("MTG_HOME").map(PathBuf::from).unwrap_or_else(|| {
         app.path().data_dir().map(|d| d.join(APP_FOLDER)).unwrap_or_else(|_| PathBuf::from("."))
     });
-    let cache = app
-        .path()
-        .cache_dir()
-        .map(|d| d.join(APP_FOLDER).join("cache"))
-        .unwrap_or_else(|_| data.join("cache"));
+    // The cache (card database, images) must not live inside the install folder – a per-user NSIS install goes to
+    // %LOCALAPPDATA%\MTG Deckbuilder – so it sits under the app identifier; a cache from the first versions moves once.
+    let cache = app.path().app_cache_dir().map(|d| d.join("cache")).unwrap_or_else(|_| data.join("cache"));
+    if !cache.exists() {
+        if let Ok(old) = app.path().cache_dir().map(|d| d.join(APP_FOLDER).join("cache")) {
+            if old.is_dir() {
+                if let Some(parent) = cache.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::rename(&old, &cache);
+            }
+        }
+    }
     let log = data.join("logs").join("backend.log");
     Dirs { data, cache, log }
 }
@@ -287,7 +295,28 @@ pub fn stop(backend: &Backend) {
         inner.child.take()
     };
     if let Some(mut c) = child {
+        kill_tree(c.id());
         let _ = c.kill();
         let _ = c.wait();
+    }
+}
+
+/// End the backend together with everything it started (its MCP server, Claude): on Windows a plain kill leaves
+/// the children alive, and they keep files in the install folder open – which breaks updates.
+fn kill_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(0x0800_0000)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
     }
 }

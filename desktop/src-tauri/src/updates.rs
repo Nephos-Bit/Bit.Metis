@@ -10,6 +10,8 @@ use serde::Serialize;
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::backend::{self, Backend};
+
 const CHECK_AFTER: Duration = Duration::from_secs(45);
 const CHECK_EVERY: Duration = Duration::from_secs(24 * 3600);
 
@@ -80,9 +82,10 @@ pub fn check(app: AppHandle, updates: Updates) {
     });
 }
 
-/// Download and install the announced update. On Windows the app exits once the installer runs and is restarted
-/// by it afterwards.
-pub fn install(app: AppHandle, updates: Updates) {
+/// Download the announced update, stop the backend (the installer overwrites its folder, and open files there made
+/// earlier updates fail) and run the installer. On Windows the app exits once the installer runs and is restarted
+/// by it afterwards; if the install fails, the backend is started again.
+pub fn install(app: AppHandle, updates: Updates, backend: Backend) {
     {
         let st = updates.0.lock().unwrap();
         if st.state == "downloading" || st.state == "installing" {
@@ -106,8 +109,8 @@ pub fn install(app: AppHandle, updates: Updates) {
             });
             let (on_chunk_state, on_done_state) = (updates.clone(), updates.clone());
             let mut got: usize = 0;
-            update
-                .download_and_install(
+            let bytes = update
+                .download(
                     move |chunk, total| {
                         got += chunk;
                         if let Some(t) = total.filter(|t| *t > 0) {
@@ -123,7 +126,14 @@ pub fn install(app: AppHandle, updates: Updates) {
                     },
                 )
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
+            let stopper = backend.clone();
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                backend::stop(&stopper);
+                std::thread::sleep(Duration::from_millis(800)); // let Windows release the files
+            })
+            .await;
+            update.install(bytes).map_err(|e| e.to_string())
         }
         .await;
         if let Err(e) = result {
@@ -132,6 +142,9 @@ pub fn install(app: AppHandle, updates: Updates) {
                 s.error = Some(e);
                 s.progress = None;
             });
+            if backend::status(&backend).state == "stopped" {
+                backend::start(app.clone(), backend.clone());
+            }
         }
     });
 }
