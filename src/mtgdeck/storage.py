@@ -2,7 +2,7 @@
 snapshot per version in decks/.versions/<slug>/ (history, diffs, restore, copy). Deleted decks go to decks/.trash/ and can be
 restored.
 
-All writes are atomic and locked (``jsonstore``): the GUI and the MCP server of a running Claude job
+All writes are atomic and locked (``jsonstore``): the GUI and the sync
 save the same decks."""
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ VERSIONS_DIRNAME = ".versions"  # decks/.versions/<slug>/v0001.json – full sna
 _CONTENT_KEYS = ("name", "commanders", "cards", "bracket", "power_profile", "proxy", "budget", "currency",
                  "description", "strategy", "notes", "table_rule")  # fmt: skip
 # Written on every save; everything else that is not content (guide, upgrade_plan, built_against, precon,
-# copied_from, last_job …) is carried over when a caller saves a deck dict built from scratch.
+# copied_from …) is carried over when a caller saves a deck dict built from scratch.
 _PER_SAVE_KEYS = {"slug", "history", "version", "created", "updated", "validation", "change_note", "needs_revalidation"}
 TRASH_DIRNAME = ".trash"
 
@@ -132,8 +132,6 @@ def _save_locked(deck: dict[str, Any], deck_slug: str, expect_version: int | Non
     for key, value in (old or {}).items():
         if key not in deck and key not in _CONTENT_KEYS and key not in _PER_SAVE_KEYS:
             deck[key] = value
-    if os.environ.get("MTG_JOB_ID"):  # saved by the MCP server of a GUI job: lets the GUI find "its" deck
-        deck["last_job"] = os.environ["MTG_JOB_ID"]
 
     if old and not old.get("version"):  # deck from before versioning: keep it as version 1
         old["version"] = 1
@@ -358,7 +356,6 @@ def list_decks() -> list[dict[str, Any]]:
                 "version": d.get("version"),
                 "valid": (d.get("validation") or {}).get("legal"),
                 "table_rule": d.get("table_rule"),
-                "last_job": d.get("last_job"),
                 "needs_revalidation": bool(d.get("needs_revalidation")),  # merged by the sync, check pending
             }
         )

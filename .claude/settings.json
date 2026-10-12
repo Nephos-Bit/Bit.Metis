@@ -1,9 +1,0 @@
-{
-  "enabledMcpjsonServers": ["mtg"],
-  "permissions": {
-    "allow": [
-      "mcp__mtg",
-      "Skill(commander-deckbuilder)"
-    ]
-  }
-}

@@ -2,8 +2,8 @@
 
 - ``atomic_write_text`` writes to a unique temp file next to the target and swaps it in with ``os.replace``,
   so a crash or a parallel reader never sees a half-written file.
-- ``locked(path)`` is an exclusive lock across threads *and* processes (the GUI and the MCP server of a
-  running Claude job write the same files). It is re-entrant per thread. Hold it only around synchronous
+- ``locked(path)`` is an exclusive lock across threads *and* processes (the GUI, the sync and the print
+  jobs write the same files). It is re-entrant per thread. Hold it only around synchronous
   read-modify-write code – never across an ``await``: do slow work (card lookups) first, then re-read and
   change the data under the lock.
 - ``read_json`` returns ``default`` for a missing file. An unreadable file is never treated as empty (the next

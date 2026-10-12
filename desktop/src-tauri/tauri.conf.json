@@ -42,7 +42,7 @@
     },
     "publisher": "liehrdot",
     "category": "Game",
-    "shortDescription": "Commander-Decks bauen, testen, drucken – mit Claude",
+    "shortDescription": "Commander-Decks selbst bauen, testen, drucken",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper",

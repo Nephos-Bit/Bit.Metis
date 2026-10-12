@@ -34,13 +34,9 @@ DEFAULTS: dict[str, Any] = {
     "upscale_model": "realesrgan-x4plus",
     # remove the print halftone of scanned cards before upscaling: off | light | normal | strong
     "descreen": "normal",
-    # AI features (Claude Code). Off = the app works without Claude: printing, collection, import, editing …
-    "ai_enabled": True,
     # Sync with the own sync server: minutes between automatic syncs (also at start and after changes); 0 = by button only
     "sync_interval": 5,
-    # questions for Claude from the phone app: this PC answers them while the app runs (uses Claude on this PC)
-    "phone_questions": True,
-    # desktop app: system notifications while the window is hidden (deck finished, answer ready, news from the phone)
+    # desktop app: system notifications while the window is hidden (print files ready, news from the phone)
     "desktop_notify": True,
 }
 _ENV = {

@@ -2,12 +2,11 @@
 
 import json
 
-from conftest import CARDS, deck_lines
+from conftest import CARDS, deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import brackets, power, storage
 from mtgdeck.gui import app as gui
-from mtgdeck.mcp_server import mcp
 from mtgdeck.power import PowerProfile
 from mtgdeck.validate import validate_deck
 
@@ -71,18 +70,8 @@ def test_looser_house_rule_only_warns_and_tier_mismatch():
     assert any("schwächer als gewünscht" in x for x in w)
 
 
-def test_profile_prompt_lines():
-    lines = gui.profile_lines(4, PowerProfile(tier="low", max_game_changers=0, style="witzig"))
-    text = "\n".join(lines)
-    assert "unteres Bracket 4" in text and "keine Game Changer" in text and "witzig" in text
-    assert gui.profile_lines(3, PowerProfile()) == []
-
-
-# --- versions --------------------------------------------------------------------------------
-
-
 async def _save(name="Meren", lines=None, bracket=3, **kw):
-    return _payload(await mcp.call_tool("save_deck", {
+    return (await save_deck(**{
         "name": name, "commanders": MEREN, "cards": _cards(lines or deck_lines()), "bracket": bracket, **kw,
     }))  # fmt: skip
 
@@ -136,30 +125,17 @@ def test_legacy_deck_without_versions_is_preserved():
     assert storage.load_version("old", 1)["cards"] == [{"name": "Sol Ring", "qty": 1}]
 
 
-async def test_version_tools_and_gui_routes(monkeypatch):
+async def test_version_gui_routes():
     await _save()
     await _save(lines=deck_lines(GCS[:1]), slug="meren", change_note="+Tutor")
-    r = _payload(await mcp.call_tool("compare_deck_versions", {"slug": "meren", "from_version": 1}))
-    assert r["added"] == ["Demonic Tutor"]
-    r = _payload(await mcp.call_tool("restore_deck_version", {"slug": "meren", "version": 1}))
-    assert r["version"] == 3 and r["diff_to_before"]["removed"] == ["Demonic Tutor"]
-    text = (await mcp.call_tool("export_deck", {"slug": "meren", "version": 2})).content[0].text
-    assert "1 Demonic Tutor" in text
-    r = _payload(await mcp.call_tool("copy_deck", {"slug": "meren", "new_name": "Meren Spaß"}))
-    assert r["slug"] == "meren-spa"
 
     client = TestClient(gui.app)
     vs = client.get("/api/decks/meren/versions").json()
-    assert [v["version"] for v in vs] == [1, 2, 3] and vs[-1]["current"]
+    assert [v["version"] for v in vs] == [1, 2] and vs[-1]["current"]
     assert "1 Demonic Tutor" in client.get("/api/decks/meren/versions/2").json()["export_text"]
+    assert client.get("/api/decks/meren/diff?a=1&b=2").json()["added"] == ["Demonic Tutor"]
+    assert client.post("/api/decks/meren/versions/1/restore").json()["version"] == 3
     assert client.get("/api/decks/meren/diff?a=2&b=3").json()["removed"] == ["Demonic Tutor"]
-    assert client.post("/api/decks/meren/versions/2/restore").json()["version"] == 4
-    assert client.post("/api/decks/meren/copy", json={"name": "Neu", "version": 1}).json()["slug"] == "neu"
+    assert client.post("/api/decks/meren/copy", json={"name": "Neu", "version": 2}).json()["slug"] == "neu"
     assert client.get("/api/decks/meren/versions/99").status_code == 404
-    assert client.get("/api/decks/meren").json()["version"] == 4
-
-    started = {}
-    monkeypatch.setattr(gui, "_start", lambda prompt, model, output_format=None: started.update(p=prompt) or {"job": "x"})
-    body = {"slug": "meren", "bracket": 4, "profile": {"tier": "low", "max_game_changers": 0}}
-    assert client.post("/api/retune", json=body).json() == {"job": "x"}
-    assert "unteres Bracket 4" in started["p"] and "keine Game Changer" in started["p"] and "change_note" in started["p"]
+    assert client.get("/api/decks/meren").json()["version"] == 3

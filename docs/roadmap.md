@@ -1,16 +1,15 @@
-# Roadmap: Sammlung, eigene Tausche, Tokens, Testhand, Upgrades
+# Roadmap: Sammlung, eigene Tausche, Tokens, Testhand
 
 Stand: 27.09.2026. Jede Phase ist für sich nutzbar und wird einzeln getestet, committet und gepusht.
 Reihenfolge nach Abhängigkeit: Phase 1 (Karten selbst tauschen) liefert die Speicherfunktion, die
-Upgrades (Phase 5) und die Sammlung (Phase 2) wiederverwenden.
+die Sammlung (Phase 2) wiederverwendet.
 
-## Phase 1 – Karten selbst tauschen (ohne Claude)
+## Phase 1 – Karten selbst tauschen
 
 - [x] Backend `deckedit.py`: `edit_deck(slug, add, remove, set_qty, set_category, note)` löst Namen
       auf (auch deutsch), prüft neu (Legalität, Bracket, Budget, Blacklist) und speichert eine neue
       Version mit Änderungsnotiz („Manuell: + X, − Y“).
-- [x] API `POST /api/decks/{slug}/cards`, MCP-Tool `edit_deck` (Claude kann gezielt tauschen, ohne die
-      ganze Liste neu zu schicken).
+- [x] API `POST /api/decks/{slug}/cards`.
 - [x] „Ähnliche Karten“: `GET /api/decks/{slug}/similar?card=` – gleiche Rolle/Oracle-Tags, passende
       Farbidentität, nicht im Deck, nicht auf der Blacklist, nach EDHREC-Beliebtheit sortiert.
 - [x] GUI Tab „Karten“: Bearbeiten-Modus mit Kartensuche („+ Karte hinzufügen“), Anzahl ±, Entfernen,
@@ -30,8 +29,6 @@ Gleicher Name + Druck + Proxy + Foil + Sprache werden zusammengeführt (Anzahl a
       Karten, Einkaufsliste, Hinweis wenn eine Karte in mehreren Decks steckt, aber zu wenige da sind.
 - [x] Druckstudio: „Nur fehlende Karten drucken“ und nach dem Druck „Gedruckte Karten als Proxies in
       die Sammlung übernehmen“ (mit dem gedruckten Artwork).
-- [x] Claude: Option „Karten aus meiner Sammlung bevorzugen“ beim Bauen, MCP-Tools `collection_search`
-      und `collection_status`, Skill-Anleitung.
 - [x] GUI Seite „Meine Sammlung“: Suche, Filter (alle/echt/Proxy), Sortierung, Liste oder Bilder,
       Anzahl ±, Proxy-/Foil-Schalter, Artwork wählen, in welchen Decks, Import/Export, Karte hinzufügen.
       Im Deck: Besitz-Markierung pro Karte und Sammlungs-Zusammenfassung.
@@ -49,14 +46,7 @@ Gleicher Name + Druck + Proxy + Foil + Sprache werden zusammengeführt (Anzahl a
 - [x] Wahrscheinlichkeiten (hypergeometrisch, auf dem Play/Draw): Länder in der Starthand,
       Landdrops bis Zug 2/3/4, Ramp in den ersten Zügen, Kartenzug und Removal bis Zug 4.
 
-## Phase 5 – Upgrade-Pfad
-
-- [x] „Upgrade-Vorschläge“ im Tab „Anpassen“: Budget (z. B. 20 €) und optional ein Fokus → Claude
-      liefert eine sortierte Liste „+ rein / − raus, Preis, Wirkung, Grund“ (strukturierte Antwort,
-      nur lesend; Karten aus der Sammlung zählen als kostenlos).
-- [x] Vorschläge einzeln anhaken und „Übernehmen“ – ohne weiteren Claude-Lauf (nutzt Phase 1).
-
-## Phase 6 – Kleinere Verbesserungen
+## Phase 5 – Kleinere Verbesserungen
 
 - [x] Kartenliste gruppieren (Kategorie, Typ, Manawert, Farbe) und sortieren (Name, Manawert, Preis).
 - [x] Schnellsuche Strg+K: Decks und Aktionen.
@@ -65,5 +55,5 @@ Gleicher Name + Druck + Proxy + Foil + Sprache werden zusammengeführt (Anzahl a
 
 ## Abschluss
 
-- [x] README, CLAUDE.md, Skill-Dokumentation aktualisieren.
+- [x] README und CLAUDE.md aktualisieren.
 - [x] Alle Abläufe im Browser prüfen (hell, dunkel, Handy), Tests offline grün.

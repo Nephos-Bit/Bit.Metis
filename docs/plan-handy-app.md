@@ -22,7 +22,7 @@ schnell und ohne Nachdenken:
 | **Rule 0 zeigen** | vor der Partie | **1 Tap** vom Start, groß genug zum Rüberreichen |
 | **Karte nachschlagen** | während der Partie | Ergebnis nach **2–3 Buchstaben**, deutscher Text |
 
-Dazu kommen Decks ansehen (Anleitung, Karten, Bilanz) und Gegner ansehen (Bilanz, Notizen). Diese Anforderungen gelten immer:
+Dazu kommen Decks ansehen (Rule 0, Karten, Bilanz) und Gegner ansehen (Bilanz, Notizen). Diese Anforderungen gelten immer:
 
 - keine Eingabe geht verloren;
 - alles funktioniert offline;
@@ -77,7 +77,7 @@ transparent, nach iOS 26 nur für Bedienelemente; Inhalte bleiben auf festem Gru
 | Tab | Inhalt |
 |---|---|
 | **Tisch** | Startseite: „Heute spielst du“ (Deck-Karte mit Rule-0-Knopf), letzte Partien, Hauptknopf **Partie eintragen** |
-| **Decks** | eigene Decks → Deck mit Rule 0 · Anleitung · Karten · Partien |
+| **Decks** | eigene Decks → Deck mit Rule 0 · Karten · Partien |
 | **Gegner** | Gegnerdecks (Suche, zuletzt gesehen zuerst) → Bilanz, Notizen, Merkmale; Knopf **Gegnerdeck** |
 | **Karten** | Kartensuche (deutsch/englisch), zuletzt nachgeschlagen; Karten der eigenen Decks auch offline |
 
@@ -197,9 +197,8 @@ transparent, nach iOS 26 nur für Bedienelemente; Inhalte bleiben auf festem Gru
 ### Decks und Deck
 
 - **Liste:** Karten mit Commander-Artwork, Name, Stufe, Bilanz und Farbidentität als Manapunkte.
-- **Deck:** Artwork-Kopf und ein Segment *Rule 0 · Anleitung · Karten · Partien*.
+- **Deck:** Artwork-Kopf und ein Segment *Rule 0 · Karten · Partien*.
   - **Karten:** nach Kategorie gruppiert, Bilder und Texte von Scryfall, danach offline gespeichert.
-  - **Anleitung:** Die gespeicherte Spielanleitung des PCs (Plan, früh/mitte/spät, Mulligan, Schlüsselkarten).
   - **Partien:** Bilanz und Liste; Wischen löscht mit Rückgängig.
 
 ### Gegner
@@ -268,7 +267,7 @@ schneller.
 
 - **Lesen:**
   - Der Sync-Server stellt ein kompaktes Lesemodell bereit (`GET /api/app/data`, mit ETag). Es enthält: Decks (Stufe,
-    Farbidentität, Rule 0, Anleitung, Kartenliste mit Kategorien, Bilanz), Gegner (mit Bilanz), Partien, die
+    Farbidentität, Rule 0, Kartenliste mit Kategorien, Bilanz), Gegner (mit Bilanz), Partien, die
     Auswahllisten (Probleme, Merkmale) und den PC-Status.
   - Die App speichert es in IndexedDB. Beim Start zeigt sie sofort den letzten Stand und aktualisiert im Hintergrund.
 - **Kartenbilder und -texte** kommen direkt von Scryfall, für Decklisten über `/cards/collection`. Bilder landen im Cache
@@ -351,9 +350,7 @@ darunter Commander-Schaden je gegnerischem Commander (Partner zählen einzeln), 
 - **Danach:** Die Partie zeigt Endstand, eine Lebenskurve pro Zug, den Commander-Schaden und den ganzen Verlauf.
 - **Am PC:** Nach dem Abgleich zeigt der Partien-Tab des Decks unter der Partie „Runde ansehen“ (Lebenskurve,
   Endstand, Commander-Schaden, Tabelle Zug für Zug mit Notizen). Die Bilanz fasst alle Runden zusammen: wer am meisten
-  Schaden gemacht hat und wie viel Leben ein eigener Zug im Schnitt kostet (der schwerste ist rot). Claude bekommt das
-  in Upgrades, Plänen und Fragen (`deck_games`, Upgrade-Prompt, App-Überblick), und „Aus den Partien lernen“ übernimmt
-  es als Fokus.
+  Schaden gemacht hat und wie viel Leben ein eigener Zug im Schnitt kostet (der schwerste ist rot).
 
 ## Schritte
 
@@ -383,7 +380,7 @@ nichts.
 - **Rückgängig:** Ist ein Eintrag schon gesendet, schickt die App das Gegenstück.
 - **Kopplung:** Es gibt drei Wege, nämlich QR-Code in der App, Code-Eingabe und Kopplungslink. Auf Android wird nach
   einer Rückfrage verbunden, auf dem iPhone im Browser kommt zuerst die Anleitung zum Home-Bildschirm.
-- **Einstellungen:** Sie zeigen den Abgleich, den Server, dieses Handy und die PCs (online, „Claude bereit“). Dazu
+- **Einstellungen:** Sie zeigen den Abgleich, den Server, dieses Handy und die PCs (online). Dazu
   kommen „Abmelden“ und nicht übernommene Einträge mit „Verwerfen“. Wird das Handy am PC abgemeldet, sagt die App das
   beim Start.
 

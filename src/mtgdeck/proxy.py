@@ -956,7 +956,7 @@ def _check_order(folder: Path) -> None:
 
 
 def launch_autofill(folder: Path, *, mode: str = "mpc") -> dict[str, Any]:
-    """Start the desktop tool in its own console window (used by the MCP tool; the GUI streams it)."""
+    """Start the desktop tool in its own console window (fallback; the GUI streams it in a terminal)."""
     _check_order(folder)
     cmd = autofill_command(folder, mode=mode)
     kwargs: dict[str, Any] = {"cwd": str(folder)}

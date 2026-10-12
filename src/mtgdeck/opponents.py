@@ -6,9 +6,6 @@ no card lists. Stored in ``decks/.opponents.json``::
                     "created", "updated"}]}
 
 Games (``games.py``) link to them via ``opponent_ids``; a game against an unknown commander creates one.
-``prompt_lines()`` tells Claude about the opponents that matter for a deck (faced with it, or playing at
-its table rule) so rebuilds and upgrade suggestions can prepare for them; typical cards of an opponent's
-commander come from EDHREC, since the user does not know the exact list.
 """
 
 from __future__ import annotations
@@ -270,90 +267,3 @@ def all_opponents() -> list[dict[str, Any]]:
     pool = _all_games()
     out = [describe(o, pool) for o in _read()]
     return sorted(out, key=lambda o: (o["record"]["games"], o["record"]["last"] or o.get("updated") or ""), reverse=True)
-
-
-def relevant(deck: dict[str, Any] | None, *, limit: int = 8) -> list[dict[str, Any]]:
-    """Opponents that matter for a deck: faced with it, or playing at its table rule; else the most played ones."""
-    pool = _all_games()
-    items = [describe(o, pool) for o in _read()]
-    if not items:
-        return []
-    slug = (deck or {}).get("slug")
-    table = (deck or {}).get("table_rule")
-    against = set((deck or {}).get("built_against") or [])
-
-    def weight(o: dict[str, Any]) -> tuple[int, int]:
-        with_deck = next((p["games"] for p in o["record"]["per_deck"] if p["slug"] == slug), 0)
-        bonus = (5 if table and o.get("table_rule") == table else 0) + (4 if o["id"] in against else 0)
-        return (with_deck * 3 + bonus, o["record"]["games"])
-
-    picked = [o for o in items if weight(o)[0] > 0]
-    if not picked:
-        picked = [o for o in items if o["record"]["games"]] or items
-    return sorted(picked, key=weight, reverse=True)[:limit]
-
-
-def _line(o: dict[str, Any], deck_slug: str | None = None) -> str:
-    parts = [title(o)]
-    if o.get("player"):
-        parts.append(f"spielt {o['player']}")
-    if o.get("bracket"):
-        parts.append(f"etwa Bracket {o['bracket']}")
-    rec = o["record"]
-    if rec["games"]:
-        mine = next((p for p in rec["per_deck"] if p["slug"] == deck_slug), None)
-        parts.append(f"deine Bilanz {rec['wins']}–{rec['losses']}" + (f" (mit diesem Deck {mine['wins']}–{mine['losses']})" if mine else ""))
-    if o.get("tags"):
-        parts.append("Merkmale: " + ", ".join(f"{TAGS[t][0]} → {TAGS[t][1]}" for t in o["tags"] if t in TAGS))
-    notes = [n["text"] for n in (o.get("notes") or [])[-3:]]
-    if notes:
-        parts.append("aufgefallen: " + " | ".join(f"„{n}“" for n in notes))
-    return "  - " + "; ".join(parts)
-
-
-def own_deck_lines(limit: int = 15) -> list[str]:
-    """The user's saved decks with level, power score and record – for the meta build prompt."""
-    out = []
-    for d in storage.list_decks()[:limit]:
-        try:
-            deck = storage.load(d["slug"])
-        except FileNotFoundError:
-            continue
-        power = (((deck.get("validation") or {}).get("bracket") or {}).get("power") or {}).get("value")
-        st = games.stats(games.games(d["slug"]))
-        parts = [f"„{d['name']}“ ({' + '.join(d['commanders']) or '?'}, {d['level']}" + (f", Power {power}" if power else "") + ")"]
-        if st["games"]:
-            lost_to = Counter(o for g in games.games(d["slug"]) if g.get("result") == "loss" for o in g.get("opponents") or [])
-            parts.append(f"Bilanz {st['wins']}–{st['losses']}" + (f", verloren gegen {', '.join(n for n, _ in lost_to.most_common(3))}" if lost_to else ""))
-        if deck.get("description"):
-            parts.append(deck["description"][:160])
-        out.append("  - " + "; ".join(parts))
-    return out
-
-
-def meta_lines(opponent_ids: list[str] | None = None) -> list[str]:
-    """The playgroup for a meta build: the chosen opponent decks (all when ``opponent_ids`` is empty)."""
-    pool = _all_games()
-    chosen = set(opponent_ids or [])
-    items = [describe(o, pool) for o in _read() if not chosen or o["id"] in chosen]
-    items.sort(key=lambda o: (o["record"]["games"], len(o.get("notes") or [])), reverse=True)
-    return [_line(o) for o in items]
-
-
-def prompt_lines(deck: dict[str, Any] | None, *, focus_id: str | None = None) -> list[str]:
-    """Prompt lines about the user's opponents (empty without any)."""
-    focus = get(focus_id) if focus_id else None
-    items = relevant(deck)
-    if focus:
-        items = [describe(focus)] + [o for o in items if o["id"] != focus["id"]][:4]
-    if not items:
-        return []
-    slug = (deck or {}).get("slug")
-    lines = ["- Gegnerdecks des Nutzers (nur Commander und Beobachtungen, keine Listen):"]
-    lines += [_line(o, slug) for o in items]
-    if focus:
-        lines.append(f"  - Schwerpunkt: das Deck soll besser gegen {title(focus)} werden.")
-    lines.append("  - Berücksichtige diese Gegner bei der Kartenwahl (passende Interaktion und Antworten), ohne ein reines "
-                 "Hate-Deck zu bauen. Typische Karten eines Gegner-Commanders findest du mit `edhrec_recommendations`; "
-                 "alle Gegnerdecks mit Bilanz liefert `opponent_decks`.")  # fmt: skip
-    return lines

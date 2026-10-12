@@ -1,16 +1,15 @@
-"""Editing saved decks directly (no Claude run) and replacement suggestions."""
+"""Editing saved decks directly and replacement suggestions."""
 
 import pytest
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import deckedit, storage
 from mtgdeck.gui.app import app
-from mtgdeck.mcp_server import mcp
 
 
 async def _deck(name="Edit Deck"):
-    await mcp.call_tool("save_deck", {
+    await save_deck(**{
         "name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0]), "category": "Synergy"} for l in deck_lines()],
     })  # fmt: skip
@@ -51,7 +50,7 @@ async def test_similar_cards_excludes_deck_and_blacklist():
     assert out[0]["reason"].startswith("gleiche Rolle")
 
 
-async def test_edit_routes_and_mcp_tool():
+async def test_edit_routes():
     slug = await _deck()
     client = TestClient(app)
     r = client.post(f"/api/decks/{slug}/cards", json={"add": [{"name": "Demonic Tutor"}], "remove": ["Filler 3"]})
@@ -60,6 +59,3 @@ async def test_edit_routes_and_mcp_tool():
     assert client.post("/api/decks/nope/cards", json={"remove": ["x"]}).status_code == 404
     sim = client.get(f"/api/decks/{slug}/similar", params={"card": "Sol Ring"}).json()
     assert sim[0]["name"] == "Filler Ramp Rock"
-    res = await mcp.call_tool("edit_deck", {"slug": slug, "add": [{"name": "Vampiric Tutor"}], "remove": ["Filler 4"], "change_note": "mehr Tutoren"})
-    assert "mehr Tutoren" in res.content[0].text
-    assert storage.load(slug)["version"] == 3

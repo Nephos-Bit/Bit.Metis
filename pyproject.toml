@@ -1,11 +1,10 @@
 [project]
 name = "mtgdeck"
 version = "0.1.5"
-description = "Commander deckbuilder for Claude Code: MCP server (Scryfall, EDHREC, Commander Spellbook, Archidekt), skills and a local web GUI"
+description = "Commander deckbuilder: a local app with Scryfall, EDHREC, Commander Spellbook and Archidekt data, printing and sync"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=2.2,<3",
     "httpx>=0.27",
     "pillow>=10",
 ]
@@ -14,7 +13,6 @@ dependencies = [
 gui = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    "claude-agent-sdk>=0.2.164",
     # real terminal for the MPC Autofill tool (its menus need a console): ConPTY on Windows, pty elsewhere
     "pywinpty>=2; sys_platform == 'win32'",
     "ptyprocess>=0.7; sys_platform != 'win32'",
@@ -26,12 +24,12 @@ desktop = [
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
+    "httpx2>=2.13",  # the TestClient prefers it; the sync-server image test blocks httpx itself
     "inquirerpy>=0.3",  # tests drive the same interactive menu the MPC Autofill tool shows
     "numpy>=1.24",  # synthetic halftone test images
 ]
 
 [project.scripts]
-mtg-mcp = "mtgdeck.mcp_server:main"
 mtg-gui = "mtgdeck.launch:main"
 mtg-sync-server = "mtgdeck.sync.server:main"
 

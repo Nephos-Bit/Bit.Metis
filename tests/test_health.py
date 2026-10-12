@@ -1,12 +1,11 @@
 """Traffic-light deck check and role candidates for fixing it."""
 
 import pytest
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import deckedit, health, storage
 from mtgdeck.gui.app import app
-from mtgdeck.mcp_server import mcp
 
 
 def _deck(lands=36, avg=3.0, roles=None, cards=None, combos=0, bracket=3, curve=None):
@@ -46,7 +45,7 @@ def test_problems_are_yellow_or_red_with_fix():
     assert items["draw"]["status"] == "red"
     assert items["removal"]["status"] == "red" and items["removal"]["fix"]["role"] == "removal"
     assert items["wipes"]["status"] == "yellow"
-    assert items["curve"]["status"] == "red" and items["curve"]["fix"]["focus"]
+    assert items["curve"]["status"] == "red" and items["curve"]["fix"] is None
     # no categories at all: win conditions unknown -> yellow with a hint instead of red
     assert items["wincons"]["status"] == "yellow" and "Win Condition" in items["wincons"]["text"]
 
@@ -65,7 +64,7 @@ def test_combo_counts_as_win_condition_and_red_when_categorized_without():
 
 
 async def test_deck_api_includes_health_and_role_candidates():
-    await mcp.call_tool("save_deck", {"name": "Health", "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
+    await save_deck(**{"name": "Health", "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
     client = TestClient(app)
     deck = client.get("/api/decks/health").json()

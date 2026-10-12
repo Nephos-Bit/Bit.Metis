@@ -247,12 +247,12 @@ def test_pairing_link_and_root_lead_to_the_app_and_the_worker_is_versioned(tmp_p
 
 
 def test_the_server_image_needs_no_card_libraries(tmp_path):
-    """The Docker image installs the package without its app dependencies (httpx, Pillow, mcp)."""
+    """The Docker image installs the package without its app dependencies (httpx, Pillow)."""
     code = f"""
 import sys
 class Block:
     def find_spec(self, name, path=None, target=None):
-        if name.split('.')[0] in ('httpx', 'PIL', 'mcp', 'claude_agent_sdk'):
+        if name.split('.')[0] in ('httpx', 'PIL'):
             raise ImportError('blocked ' + name)
 sys.meta_path.insert(0, Block())
 from mtgdeck.sync.server import create_app, app_snapshot, run_op

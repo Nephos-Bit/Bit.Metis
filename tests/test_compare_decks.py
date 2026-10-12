@@ -1,11 +1,10 @@
 """Compare two saved decks (a rebuild vs. the old deck) and order the difference."""
 
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import collection, printorders, storage
 from mtgdeck.gui.app import app
-from mtgdeck.mcp_server import mcp
 
 
 def _cards(lines):
@@ -13,11 +12,11 @@ def _cards(lines):
 
 
 async def _decks():
-    await mcp.call_tool("save_deck", {"name": "Meren Alt", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
+    await save_deck(**{"name": "Meren Alt", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
                                       "cards": _cards(deck_lines())})  # fmt: skip
     new = deck_lines(extra=["1 Demonic Tutor", "1 Pitiless Plunderer"], fillers=58)
     new[new.index("18 Forest")] = "19 Forest"
-    await mcp.call_tool("save_deck", {"name": "Meren Neu", "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
+    await save_deck(**{"name": "Meren Neu", "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
                                       "cards": _cards(new)})  # fmt: skip
     return "meren-neu", "meren-alt"
 
@@ -67,16 +66,6 @@ async def test_compare_route_and_order_the_difference():
         # a single card from the card view
         client.post(f"/api/orders/{order['id']}/items", json={"items": [{"kind": "card", "name": "Sol Ring", "qty": 2, "source": "Einzelkarten"}]})
         assert {i["name"]: i["qty"] for i in printorders.load(order["id"])["items"]}["Sol Ring"] == 2
-
-
-async def test_mcp_compare_and_order():
-    new, old = await _decks()
-    res = await mcp.call_tool("compare_decks", {"slug": new})
-    data = res.structured_content if hasattr(res, "structured_content") else __import__("json").loads(res[0].text)
-    assert data["other"]["slug"] == old and data["totals"]["common"] == 97 and data["totals"]["added"] == 3
-    res = await mcp.call_tool("update_print_order", {"order": "Umbau Meren", "from_deck": new, "compare_with": old})
-    data = res.structured_content if hasattr(res, "structured_content") else __import__("json").loads(res[0].text)
-    assert data["added"] == 3
 
 
 async def test_order_exports_as_moxfield_list():

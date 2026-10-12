@@ -222,7 +222,7 @@ def pair_code(roots: Roots | None = None, client: httpx.Client | None = None) ->
 
 
 def presence(info: dict[str, Any], roots: Roots | None = None, client: httpx.Client | None = None) -> bool:
-    """Tell the server this device is running (and whether Claude is ready here); ``False`` when unreachable."""
+    """Tell the server this device is running; ``False`` when unreachable."""
     cfg = config(roots)
     if not cfg or cfg.get("revoked"):
         return False
@@ -237,34 +237,6 @@ def presence(info: dict[str, Any], roots: Roots | None = None, client: httpx.Cli
         return False
     except RemoteError:
         return False
-
-
-def claim_job(wait: float = 25, roots: Roots | None = None, client: httpx.Client | None = None) -> dict[str, Any] | None:
-    """The next question from a phone for this PC (waits up to ``wait`` s on the server); ``None`` when there is none
-    or this device is not connected. A signed-off device is marked revoked."""
-    cfg = config(roots)
-    if not cfg or cfg.get("revoked"):
-        return None
-    try:
-        with transport(cfg, client) as t:
-            return t.claim_job(wait)
-    except AuthError:
-        with update_json(_device_file(roots), {}) as stored:
-            if stored:
-                stored["revoked"] = True
-        return None
-
-
-def job_progress(job_id: str, text: str = "", roots: Roots | None = None, client: httpx.Client | None = None) -> str:
-    """What Claude is doing (also the heartbeat); returns the job's status – ``cancelled``/``taken`` mean: stop."""
-    with transport(_connected(roots), client) as t:
-        return t.job_progress(job_id, text)
-
-
-def job_finish(job_id: str, result: dict[str, Any], roots: Roots | None = None, client: httpx.Client | None = None) -> str:
-    """The answer (``answer``, ``cards``, ``decks``) or why there is none (``error``); the server writes it."""
-    with transport(_connected(roots), client) as t:
-        return t.job_finish(job_id, result)
 
 
 def pending_revalidation() -> list[str]:

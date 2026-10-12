@@ -4,9 +4,7 @@ does not unpack to %TEMP%, which virus scanners dislike).
 
     uv run pyinstaller desktop/sidecar/backend.spec            → dist/mtgdeck-backend/
 
-Bundled besides the code: the GUI's static files, the Agent SDK's Claude CLI (``claude_agent_sdk/_bundled``,
-found by the SDK relative to its package), and the ``agent/`` folder Claude runs in (skills + CLAUDE.md).
-The sync server, its phone app and the test helpers are left out."""
+Bundled besides the code: the GUI's static files. The sync server, its phone app and the test helpers are left out."""
 
 import sys
 from pathlib import Path
@@ -18,17 +16,12 @@ sys.path.insert(0, str(ROOT / "src"))
 
 datas = [
     (str(ROOT / "src/mtgdeck/gui/static"), "mtgdeck/gui/static"),
-    (str(ROOT / ".claude/skills"), "agent/.claude/skills"),
-    (str(ROOT / "desktop/agent/CLAUDE.md"), "agent"),
 ]
-datas += collect_data_files("claude_agent_sdk", includes=["_bundled/*"])
-datas += collect_data_files("mcp")  # schema/json files of the MCP package, if any
 datas += collect_data_files("certifi")
 
 hiddenimports = (
     collect_submodules("mtgdeck")
     + collect_submodules("uvicorn")
-    + collect_submodules("claude_agent_sdk")
     + ["segno", "PIL.Image", "PIL.ImageFilter", "PIL.ImageEnhance", "PIL.ImageDraw", "PIL.ImageFont"]
     + (["winpty"] if sys.platform == "win32" else ["ptyprocess"])
 )

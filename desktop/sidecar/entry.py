@@ -1,7 +1,6 @@
 """Entry point of the packaged backend (``mtgdeck-backend[.exe]``): the same launcher as ``mtg-gui``.
 
-``mtgdeck-backend --data <folder> --port 0 --token auto`` serves the GUI and prints ``MTGDECK_URL=…``;
-``mtgdeck-backend mcp`` is the MCP server a Claude job starts (see ``gui.app._mcp_command``)."""
+``mtgdeck-backend --data <folder> --port 0 --token auto`` serves the GUI and prints ``MTGDECK_URL=…``."""
 
 import multiprocessing
 import sys

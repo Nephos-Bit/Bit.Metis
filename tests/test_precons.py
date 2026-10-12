@@ -1,13 +1,10 @@
 """Precons from MTGJSON and the staged upgrade plan."""
 
 import pytest
-from conftest import deck_lines
 from fastapi.testclient import TestClient
 
 from mtgdeck import precons, storage
-from mtgdeck.gui import app as app_mod
-from mtgdeck.gui.app import PlanRequest, _enrich_plan, app, plan_prompt
-from mtgdeck.mcp_server import mcp
+from mtgdeck.gui.app import app
 
 
 async def test_search_filters_commander_decks():
@@ -40,52 +37,3 @@ def test_routes():
     assert client.get("/api/precons/Missing_X").status_code == 404
     r = client.post("/api/precons/import", json={"file": "GraveTroupe_C99"})
     assert r.status_code == 200 and client.get(f"/api/decks/{r.json()['slug']}").json()["precon"]["name"] == "Grave Troupe"
-
-
-async def test_mcp_precon_tools():
-    assert "Grave Troupe" in str(await mcp.call_tool("search_precons", {"query": "grave"}))
-    assert "grave-troupe" in str(await mcp.call_tool("import_precon", {"file": "GraveTroupe_C99"}))
-    assert "error" in str(await mcp.call_tool("import_precon", {"file": "bad/name"}))
-
-
-async def _deck():
-    await mcp.call_tool("save_deck", {"name": "Plan", "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
-        "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
-    return storage.load("plan")
-
-
-async def test_plan_prompt_and_enrich():
-    deck = await _deck()
-    prompt = plan_prompt(deck, PlanRequest(stages=[100, 20, 50]), False)
-    assert "Stufe 1 bis 20 EUR insgesamt, Stufe 2 bis 50 EUR insgesamt, Stufe 3 bis 100 EUR insgesamt" in prompt
-    plan = await _enrich_plan(deck, {"summary": "S", "stages": [
-        {"title": "Ramp", "upgrades": [{"add": "Vampiric Tutor", "remove": "Filler 1", "reason": "r"}]},
-        {"title": "Draw", "upgrades": [{"add": "Vampiric Tutor", "remove": "Filler 2", "reason": "doppelt"},
-                                       {"add": "Necropotence", "remove": "Filler 1", "reason": "schon entfernt"},
-                                       {"add": "Demonic Tutor", "remove": "Filler 3", "reason": "ok"}]},
-        {"title": "Leer", "upgrades": [{"add": "Gibt Es Nicht", "remove": "Filler 4", "reason": "x"}]},
-    ]}, [20, 50, 100])  # fmt: skip
-    assert [s["title"] for s in plan["stages"]] == ["Ramp", "Draw"]
-    assert [u["add"] for u in plan["stages"][1]["upgrades"]] == ["Demonic Tutor"]
-    assert plan["stages"][0]["budget"] == 20 and plan["stages"][0]["cost"] == 0.5
-    assert await _enrich_plan(deck, {"stages": []}, [20]) is None
-
-
-async def test_plan_job_stores_plan(monkeypatch):
-    await _deck()
-
-    async def fake_run(job, prompt, model, output_format=None, *, read_only=False, finish=None):
-        assert read_only and "stages" in output_format["schema"]["properties"]
-        await finish(job, True, "", {"stages": [{"title": "Eins", "upgrades": [{"add": "Necropotence", "remove": "Filler 5", "reason": "r"}]}]})
-        job.done = True
-
-    monkeypatch.setattr(app_mod, "_run_claude", fake_run)
-    client = TestClient(app)
-    job = client.post("/api/decks/plan/upgrade-plan", json={"stages": [30]}).json()["job"]
-    import time
-    for _ in range(50):
-        if any(e["type"] == "done" for e in app_mod.JOBS[job].events):
-            break
-        time.sleep(0.02)
-    assert any(e["type"] == "plan" for e in app_mod.JOBS[job].events)
-    assert client.get("/api/decks/plan").json()["upgrade_plan"]["stages"][0]["budget"] == 30

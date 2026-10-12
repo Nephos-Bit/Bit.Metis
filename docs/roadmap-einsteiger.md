@@ -11,8 +11,7 @@ können und gezielt besser werden. Jede Phase wird einzeln getestet, committet u
 - [x] Kartentext auf Deutsch: `/api/cards/text?name=&lang=de` liefert Oracle-Text, gedruckten deutschen
       Text (sofern es einen deutschen Druck gibt) und die Schlüsselwörter der Karte.
 - [x] Große Kartenansicht: Text neben dem Bild (Deutsch/Englisch umschaltbar), Schlüsselwörter mit
-      Erklärung beim Hovern/Antippen, Knopf „Erklär mir die Karte“ (fragt Claude im Tab „Fragen“, wofür
-      die Karte in diesem Deck da ist und wann man sie spielt).
+      Erklärung beim Hovern/Antippen.
 - [x] Glossar-Seite zum Nachschlagen (Suche), erreichbar über Strg+K und die Seitenleiste.
 
 ## Phase B – Deck-Check als Ampel
@@ -21,42 +20,27 @@ können und gezielt besser werden. Jede Phase wird einzeln getestet, committet u
       Länder (abhängig vom Manawert und Ramp), Ramp, Kartenzug, Removal, Board Wipes, Manakurve,
       Siegbedingungen (Kategorie „Win Condition“ oder Combos).
 - [x] Deck-Ansicht: Panel „Deck-Check“ oben neben der Kartenliste.
-- [x] „Beheben“: Kandidaten für die Rolle ansehen (ohne KI, passend zu den Farben) und in den
-      Bearbeiten-Modus übernehmen – oder Upgrade-Vorschläge mit vorausgefülltem Fokus.
+- [x] „Beheben“: Kandidaten für die Rolle ansehen (passend zu den Farben) und in den
+      Bearbeiten-Modus übernehmen.
 
-## Phase C – Deck-Anleitung, Spickzettel und Rule-0-Text
+## Phase C – Rule-0-Text
 
-- [x] Rule-0-Text ohne KI (`rule0.py`) aus der Prüfung: Stufe, Spielweise, Game Changer, Combos,
+- [x] Rule-0-Text (`rule0.py`) aus der Prüfung: Stufe, Spielweise, Game Changer, Combos,
       Tutoren, Extra Turns, Tempo – zum Kopieren und als Vollbild zum Vorzeigen.
-- [x] Deck-Anleitung per Claude (strukturierte Antwort, nur lesend): Spielplan in drei Sätzen, frühes/
-      mittleres/spätes Spiel, Mulligan-Regeln, Schlüsselkarten mit Grund, Siegwege, Combos, worauf man
-      achten muss, Tipps. Gespeichert im Deck (mit Version, für die sie gilt).
-- [x] Neuer Tab „Anleitung“ mit Rule-0-Karte und Anleitung; „Drucken / als PDF“ druckt genau eine
-      Spickzettel-Seite (Druck-Stylesheet).
+- [x] Tab „Rule 0“; „Drucken / als PDF“ druckt genau eine Seite (Druck-Stylesheet).
 
 ## Phase D – Spiele festhalten
 
 - [x] Partien pro Deck (`decks/.games/<slug>.json`): Ergebnis, gegnerische Commander, Zug, Probleme als
       Schnellwahl („zu wenig Länder“, „kein Removal“, „zu langsam“, …), beste Karte, Notiz, Deck-Version.
 - [x] Statistik: Siege/Niederlagen, häufigste Probleme, Bilanz pro Version.
-- [x] „Aus den Partien lernen“: Upgrade-Vorschläge mit Fokus aus den häufigsten Problemen.
-- [x] MCP-Tool `deck_games` (lesend), damit Fragen und Upgrades die Partien kennen.
 
-## Phase E – Geführter Commander-Finder
-
-- [x] Quiz statt nur Freitext: Spielgefühl, Farben (mit Bedeutung jeder Farbe), Schwierigkeit,
-      Lieblingsthemen – optional ergänzt durch Freitext.
-- [x] Vorschläge mit „Warum passt der zu dir?“ und Schwierigkeitsgrad; Anfänger bekommen einfache
-      Commander bevorzugt.
-
-## Phase F – Einstieg über Precons
+## Phase E – Einstieg über Precons
 
 - [x] Precon-Liste von MTGJSON (DeckList + Deck-Dateien, gecacht), Suche nach Name, Set-Kürzel, Jahr
       (die DeckList enthält keine Commander; die zeigt die Vorschau). MTGJSON war aus der Entwicklungsumgebung
       nicht erreichbar – das Format ist nach MTGJSON v5 umgesetzt und defensiv geparst.
-- [x] Dritter Einstieg in „Neues Deck“: „Ich habe ein Starterdeck“ → Deck wird importiert und geprüft.
-- [x] Upgrade-Plan in Stufen (z. B. 20 € · 50 € · 100 €): eine KI-Anfrage, pro Stufe Tausche mit
-      Begründung; stufenweise übernehmen.
+- [x] Einstieg „Starterdeck (Precon)“ in „Neues Deck“ → Deck wird importiert und geprüft.
 
 ## Zusatz – Deck-Import per Link
 
@@ -64,11 +48,11 @@ können und gezielt besser werden. Jede Phase wird einzeln getestet, committet u
       Hinweis auf den Text-Export), MTGGoldfish, TappedOut, Deckstats, EDHREC-Durchschnittsdecks; eingefügte Listen.
 - [x] Vorschau: Name, Quelle, Kartenzahl, nicht erkannte Karten, Commander-Auswahl (Kandidaten aus der Liste,
       vorausgewählt per Hinweis), Bracket automatisch geschätzt oder gewählt.
-- [x] „Neues Deck“: dritter Einstieg „Ich habe schon ein Deck“ mit Link · Liste einfügen · Starterdeck.
+- [x] „Neues Deck“: Einstiege Link · Liste einfügen · Starterdeck.
 - [x] Die Seiten waren aus der Entwicklungsumgebung nicht erreichbar – Formate nach den öffentlichen Endpunkten
       umgesetzt und defensiv geparst, offline mit Mocks getestet.
 
 ## Abschluss
 
-- [x] README, CLAUDE.md, Skill-Dokumentation.
+- [x] README und CLAUDE.md.
 - [x] Browser-Prüfung aller neuen Abläufe (hell, dunkel, Handy), Tests offline grün.

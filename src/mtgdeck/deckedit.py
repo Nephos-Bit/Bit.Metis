@@ -72,7 +72,7 @@ async def edit_deck(
     ``add``: ``[{"name", "qty"=1, "category"=None}]`` (quantities add up), ``remove``: names (all
     copies), ``set_qty``: name -> quantity (0 removes), ``set_category``: name -> category.
     Raises ``ValueError`` for unknown card names or when nothing changes. If the deck was saved
-    meanwhile (e.g. by a running Claude job), the change is applied again to the newer version.
+    meanwhile (another window, a sync), the change is applied again to the newer version.
     """
     for attempt in range(3):
         try:

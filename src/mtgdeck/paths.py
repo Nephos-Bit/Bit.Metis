@@ -10,8 +10,6 @@ Three roots, each overridable by one environment variable:
   ``~/.cache/mtgdeck`` or ``%LOCALAPPDATA%\\app.mtgdeck.desktop\\cache`` when packaged (the desktop shell passes
   ``--cache``; the folder is named after the app identifier because a per-user install itself lives in
   ``%LOCALAPPDATA%\\MTG Deckbuilder``).
-- ``agent_root()`` – the folder Claude runs in (its ``.claude/skills`` and ``CLAUDE.md``). ``MTG_AGENT_ROOT``;
-  otherwise the repository root, or the bundled ``agent/`` folder of the packaged app.
 
 No imports from the rest of the package: every module reads its default path from here.
 """
@@ -65,23 +63,3 @@ def cache_home() -> Path:
     if env:
         return Path(env).expanduser()
     return _platform_cache() if frozen() else Path.home() / ".cache" / "mtgdeck"
-
-
-def agent_root() -> Path:
-    env = os.environ.get("MTG_AGENT_ROOT")
-    if env:
-        return Path(env).expanduser()
-    return bundle_dir() / "agent" if frozen() else REPO_ROOT
-
-
-def bundled_cli() -> Path | None:
-    """The Claude Code CLI the Agent SDK ships (``claude_agent_sdk/_bundled/claude[.exe]``), if present."""
-    name = "claude.exe" if sys.platform == "win32" else "claude"
-    candidates = [bundle_dir() / "claude_agent_sdk" / "_bundled" / name]
-    try:
-        import claude_agent_sdk
-
-        candidates.append(Path(claude_agent_sdk.__file__).parent / "_bundled" / name)
-    except ImportError:
-        pass
-    return next((p for p in candidates if p.is_file()), None)

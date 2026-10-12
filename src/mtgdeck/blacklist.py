@@ -6,7 +6,7 @@ Stored as plain text so it can also be edited by hand. Location: MTG_BLACKLIST_F
 - a card: its English Oracle name (``Sol Ring``);
 - a rule: ``@<key>`` for a known term from ``RULES`` (``@true-duals``, ``@cheap-tutors``, ``@fast-mana`` …);
 - a price limit: ``@price>20`` (cards more expensive than 20 in the deck's currency);
-- a free-text term: ``@text:<anything>`` – not checked automatically, Claude reads and respects it.
+- a free-text term: ``@text:<anything>`` – a note for yourself, not checked automatically.
 
 Known terms are recognised in German and English (``True-Duals``, ``Günstige Tutoren``, ``Fetchlands``,
 ``teurer als 20 €`` …), see ``parse_rule()``. Rules are either curated name lists or predicates on the
@@ -183,7 +183,7 @@ def _describe(line: str) -> dict[str, Any]:
     body = line[1:]
     if body.startswith("text:"):
         return {"rule": line, "key": "text", "label": body[5:], "checked": False,
-                "description": "Freier Begriff – wird nicht automatisch geprüft, Claude beachtet ihn beim Bauen."}  # fmt: skip
+                "description": "Freier Begriff – eine Notiz für dich, wird nicht automatisch geprüft."}  # fmt: skip
     m = re.fullmatch(r"price>(\d+(?:\.\d+)?)(usd)?", body)
     if m:
         cur = "$" if m.group(2) else "€"

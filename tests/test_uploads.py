@@ -4,17 +4,16 @@ import io
 import json
 import zipfile
 
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from mtgdeck import backup, imaging, proxy, storage
 from mtgdeck.gui.app import app
-from mtgdeck.mcp_server import mcp
 
 
 async def _deck():
-    await mcp.call_tool("save_deck", {"name": "Eigene Bilder", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
+    await save_deck(**{"name": "Eigene Bilder", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
     return storage.load("eigene-bilder")
 

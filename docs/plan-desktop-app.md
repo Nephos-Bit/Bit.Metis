@@ -71,28 +71,26 @@ Für uns: Das Fenster erscheint sofort mit dem Gerüst der Oberfläche und füll
 - **Updates:** Das Plugin `updater` liest `latest.json` aus den GitHub-Releases, prüft die Signatur und installiert
   den NSIS-Installer im Modus `passive` ([Tauri](https://v2.tauri.app/plugin/updater/)). Tag, Manifest und Version
   müssen zusammenpassen, sonst kommen Updates still nie an.
-- **Infobereich (Tray):** Fenster schließen heißt „in den Infobereich“, damit der PC Fragen vom Handy weiter
-  beantwortet; dort steht der Sync-Stand. Beenden gibt es nur bewusst (Tray-Menü, Strg+Q).
+- **Infobereich (Tray):** Fenster schließen heißt „in den Infobereich“, damit der Sync weiterläuft; dort steht
+  der Sync-Stand. Beenden gibt es nur bewusst (Tray-Menü, Strg+Q).
 
 ## Zehn Regeln für die Desktop-App
 
 1. **Sofort da.** Fenster in unter einer Sekunde, Gerüst zuerst, dann die Daten. Kein Startbild, kein Ladekreisel.
-2. **Ein Weg pro Aufgabe.** Für Fragen an Claude gibt es einen Ort, für Upgrades einen, für Regeln einen.
-   Doppelte Wege werden zusammengelegt.
+2. **Ein Weg pro Aufgabe.** Für jede Aufgabe gibt es einen Ort. Doppelte Wege werden zusammengelegt.
 3. **Tastatur für alles Häufige.** Strg+K Palette, Strg+N neues Deck, Strg+F suchen, Strg+, Einstellungen, Esc
    schließt. Kürzel stehen in der Palette und in einer Übersicht (`?`).
 4. **Fühlt sich nach Windows an.** Systemtitelleiste mit App-Symbol, Design folgt dem System, Fenstergröße und
    -position werden gemerkt, Snap-Layouts funktionieren.
-5. **Nie im Weg.** Benachrichtigung nur, wenn das Fenster nicht sichtbar ist und etwas fertig wurde (Deck gebaut,
-   Antwort da). Keine Hinweise beim Start.
-6. **Immer erreichbar, nie aufdringlich.** Im Infobereich lebt die App weiter (Sync, Fragen vom Handy). Die
+5. **Nie im Weg.** Benachrichtigung nur, wenn das Fenster nicht sichtbar ist und etwas Neues da ist (z. B. von
+   anderen Geräten). Keine Hinweise beim Start.
+6. **Immer erreichbar, nie aufdringlich.** Im Infobereich lebt die App weiter (Sync). Die
    Tray-Spitze zeigt den Stand; ein Klick öffnet das Fenster.
 7. **Aktualisiert sich selbst.** Prüft beim Start, meldet leise „Neue Version – beim nächsten Start“ und installiert
    nach Bestätigung. Nichts zwingt.
 8. **Lokal zuerst.** Alle Daten liegen in `%APPDATA%\MTG Deckbuilder` als lesbare Dateien. Ohne Netz geht alles,
    was keine Kartensuche braucht.
-9. **Ein Installer, kein Setup-Marathon.** Doppelklick, fertig. Claude Code wird erkannt oder freundlich erklärt.
-   Externe Programme (MPC Autofill) bleiben optional.
+9. **Ein Installer, kein Setup-Marathon.** Doppelklick, fertig. Externe Programme (MPC Autofill) bleiben optional.
 10. **Weniger Oberfläche.** Jede Seite, jeder Tab, jede Einstellung muss ihren Platz verdienen. Siehe „Aufräumen“.
 
 ## Aufräumen: Was zu viel ist
@@ -102,21 +100,18 @@ Bestandsaufnahme nach Code und Oberfläche (Stand heute: 12 Seiten, 8 Deck-Tabs 
 
 | Funktion | Umfang | Einschätzung | Empfehlung |
 |---|---|---|---|
-| **Deskmat-Studio** | 620 Zeilen Backend, ~150 Stellen in der Oberfläche, eigene Seite, Einstellungsbereich, Bildgenerator, MCP-Tool, Sync-Regel | Ein zweites Produkt in der App. Ein Deskmat macht man einmal im Jahr – dafür ein eigener Bildgenerator, Zuschnitt, Testdruck | **raus** |
+| **Deskmat-Studio** | 620 Zeilen Backend, ~150 Stellen in der Oberfläche, eigene Seite, Einstellungsbereich, Bildgenerator, Sync-Regel | Ein zweites Produkt in der App. Ein Deskmat macht man einmal im Jahr – dafür ein eigener Bildgenerator, Zuschnitt, Testdruck | **raus** |
 | **KI-Hochskalierung + Entrasterung** der Proxy-Scans | ~130 Stellen, braucht Real-ESRGAN mit Vulkan-GPU, eigener Einstellungsbereich | Feintuning für wenige; MPC druckt die Scryfall-Scans in guter Qualität. Der Aufwand (Cache-Versionen, Fallbacks, Warnungen) ist größer als der Nutzen | **raus** |
 | **Terminal im Browser** für MPC Autofill (xterm.js, Pseudo-Terminal, pywinpty) | 300 KB Vendor-Code, eigene Tastatur-/Resize-Routen, zwei plattformabhängige Pakete | Das Tool kann in einem eigenen Konsolenfenster laufen – das gibt es schon als Ausweg. In einer Desktop-App ist das der natürliche Weg | **raus**, Tool startet im eigenen Fenster |
 | **Exporte Cockatrice / Tabletop Simulator** | 76 Zeilen, ein Menüpunkt | klein, aber für Papier- und Proxyspieler ohne Nutzen | optional raus |
-| **„Fragen zum Deck“** (Tab im Deck) neben **„Frag Claude“** | Tab, Route, Prompt, eigene Speicherdatei, Sync-Regel | Zwei Wege für dieselbe Aufgabe. „Frag Claude“ kennt alle Decks; vom Deck aus reicht ein Knopf, der das Gespräch mit dem Deck vorbelegt – so macht es das Handy schon | **zusammenlegen** |
-| Upgrade-Vorschläge und Upgrade-Plan in Stufen | zwei von vier Unterwegen im Tab „Anpassen“ | Verwandt, aber verschieden: einmal tauschen oder über Monate in Stufen. Beide bleiben, der Plan wird im Text klarer als „über mehrere Käufe“ erklärt | bleibt |
-| Blacklist, Tischregeln, Hausregeln im Power-Profil | drei Regelsysteme | Überschneidung bei „max. Game Changer / Tutoren“. Zusammenlegen wäre richtig, greift aber tief in Skill, Prompts und Validierung | später, eigenes Thema |
-| Glossar, Testhand, Rule 0, Anleitung | klein | Einsteigerhilfen, die beim Spielen helfen | bleibt |
+| Blacklist, Tischregeln, Hausregeln im Power-Profil | drei Regelsysteme | Überschneidung bei „max. Game Changer / Tutoren“. Zusammenlegen wäre richtig, greift aber tief in die Validierung | später, eigenes Thema |
+| Glossar, Testhand, Rule 0 | klein | Einsteigerhilfen, die beim Spielen helfen | bleibt |
 | Sammelbestellungen, Deckvergleich, eigene Druckbilder | mittel | lösen echte Aufgaben beim Proxydruck für eine Runde | bleibt |
 
 Nach dem Aufräumen: 11 Seiten, 7 Deck-Tabs, 6 Einstellungsbereiche, die Seitenleisten-Gruppe „Werkstatt“ schrumpft
 auf „Sammelbestellungen“ und wandert zu „Meine Sammlung“.
 
-Beim Entfernen gilt: Daten gehen nicht verloren. Alte Deck-Fragen werden einmalig in ein Gespräch „Fragen zu
-<Deck>“ unter „Frag Claude“ übernommen. Deskmat-Ordner und hochskalierte Cache-Dateien bleiben auf der Platte, die
+Beim Entfernen gilt: Daten gehen nicht verloren. Deskmat-Ordner und hochskalierte Cache-Dateien bleiben auf der Platte, die
 App rührt sie nicht mehr an.
 
 ## Aufbau der Desktop-App
@@ -129,8 +124,7 @@ desktop/                      Tauri-2-Projekt (Rust-Hülle, rund 450 Zeilen)
     src/backend.rs            Backend starten, überwachen, neu starten, Protokoll
     icons/
   ui/index.html               lokale Startseite (Gerüst), springt zur Adresse des Backends
-  sidecar/                    PyInstaller-Spec: mtgdeck-backend als Ordner-Build, agent/ mit Skills
-  agent/CLAUDE.md             Anweisungen für Claude innerhalb der App
+  sidecar/                    PyInstaller-Spec: mtgdeck-backend als Ordner-Build
 ```
 
 - **Start:** Tauri startet `mtgdeck-backend.exe --data … --cache … --port 0 --token auto` (Port 0 bindet einen
@@ -143,17 +137,12 @@ desktop/                      Tauri-2-Projekt (Rust-Hülle, rund 450 Zeilen)
   Installer pro Benutzer anlegt), Protokoll `<data>\logs\backend.log` (plus der vorige Lauf als
   `backend.1.log`). Vorhandene Daten kommen per Sync oder über „Sicherung hochladen“ in die App; `MTG_HOME`
   in der Umgebung überstimmt den Ordner.
-- **Claude:** Der Agent-SDK bringt die CLI mit (das Windows-Wheel erst ab 0.2.164, deshalb die Mindestversion in
-  `pyproject.toml`); `paths.bundled_cli()` findet sie im Paket. `GET /api/ai` fragt `claude auth status` (gecacht);
-  ist niemand angemeldet, sagt die Oberfläche das und bietet „Bei Claude anmelden“: `claude auth login` läuft im
-  Terminal der App (Pseudo-Terminal wie bei MPC Autofill), der Browser öffnet sich zum Bestätigen.
 - **Tray:** Menü Öffnen, Datenordner öffnen, „Beim Anmelden starten“ (Plugin `autostart`, Start mit `--hidden` nur
   in den Tray), Beenden; Linksklick öffnet das Fenster. Fenster schließen versteckt es, beim ersten Mal mit einem
-  Hinweis. Der Tooltip zeigt den Zustand (laufende Aufträge, Sync, Frage vom Handy). Kein „Jetzt abgleichen“ im
+  Hinweis. Der Tooltip zeigt den Zustand (laufende Aufträge, Sync). Kein „Jetzt abgleichen“ im
   Menü – der Sync läuft von selbst, der Knopf steht in den Einstellungen.
 - **Brücke:** Die Hülle fragt alle 10 s `POST /api/desktop/poll` (mit dem Token) und bekommt Tooltip, neue
-  Hinweise (bei verstecktem Fenster als Systembenachrichtigung: Deck fertig, Antwort von Claude, Neues von anderen
-  Geräten, Frage vom Handy beantwortet) und Befehle aus den Einstellungen (Autostart an/aus, Datenordner oder
+  Hinweise (bei verstecktem Fenster als Systembenachrichtigung: Neues von anderen Geräten) und Befehle aus den Einstellungen (Autostart an/aus, Datenordner oder
   Protokoll öffnen). Die Oberfläche selbst braucht so keine Tauri-IPC; im Browser fehlt das Panel einfach.
 - **Einmal:** Plugin `single-instance` (als erstes registriert): ein zweiter Start holt das Fenster nach vorn.
 - **Selbsttest:** `--selftest` startet das Backend, liest `/api/health` und beendet sich mit Exit-Code – so prüft
@@ -168,22 +157,21 @@ desktop/                      Tauri-2-Projekt (Rust-Hülle, rund 450 Zeilen)
   Mica-Hintergrund, Design folgt dem System.
 - **Kürzel:** in der Oberfläche: Strg+K Palette, Strg+N neues Deck, Strg+F Kartensuche im Deck, Strg+, Einstellungen,
   Strg+Q beenden, `?` Übersicht. Eine Befehlsliste speist Palette und Übersicht.
-- **Benachrichtigung:** Plugin `notification`, nur wenn das Fenster nicht sichtbar ist: „Deck fertig“, „Antwort da“,
-  „Neu vom Handy“.
+- **Benachrichtigung:** Plugin `notification`, nur wenn das Fenster nicht sichtbar ist: „Neu von deinen anderen Geräten“.
 
 ## Schritte
 
 | Schritt | Inhalt | fertig, wenn |
 |---|---|---|
-| **5a – Aufräumen** ✅ | Deskmat-Studio und die Online-Exporte entfernt; „Fragen zum Deck“ in „Frag Claude“ aufgegangen (Deckbezug, alte Fragen als Gespräche übernommen); Seitenleiste und Einstellungen gestrafft. KI-Hochskalierung und das Browser-Terminal bleiben auf Wunsch | Tests grün, Oberfläche ohne Leerstellen, alte Daten übernommen |
-| **5b – Backend als Programm** ✅ | `mtg-gui --data … --port 0 --token auto` (Launcher `mtgdeck.launch`, Datenordner `paths.home()`, Token-Schutz, `/api/health`, `mcp`-Modus), PyInstaller-Ordner-Build (`desktop/sidecar/backend.spec`), Workflow „Desktop“ baut und prüft die Windows-Exe | `mtgdeck-backend.exe` startet ohne Python |
+| **5a – Aufräumen** ✅ | Deskmat-Studio und die Online-Exporte entfernt; Seitenleiste und Einstellungen gestrafft. KI-Hochskalierung und das Browser-Terminal bleiben auf Wunsch | Tests grün, Oberfläche ohne Leerstellen, alte Daten übernommen |
+| **5b – Backend als Programm** ✅ | `mtg-gui --data … --port 0 --token auto` (Launcher `mtgdeck.launch`, Datenordner `paths.home()`, Token-Schutz, `/api/health`), PyInstaller-Ordner-Build (`desktop/sidecar/backend.spec`), Workflow „Desktop“ baut und prüft die Windows-Exe | `mtgdeck-backend.exe` startet ohne Python |
 | **5c – Tauri-Hülle** ✅ | Fenster, Sidecar-Aufsicht mit Neustart und Protokoll, Single Instance, Fensterzustand, Tray, Autostart-Option, Hinweis beim Schließen, `--selftest`; der Workflow baut Backend und Hülle, prüft beide und lädt den NSIS-Installer hoch | Installer aus GitHub Actions läuft auf einem frischen Windows |
-| **5d – Desktop-Feinschliff** ✅ | Anmelden bei Claude aus der App (Terminal), Tastenkürzel (Strg+K/N/J/,/S, `?` Übersicht), Tray-Tooltip mit Zustand, Benachrichtigungen bei verstecktem Fenster, Einstellungen „Desktop-App“ (Autostart, Benachrichtigungen, Ordner, Protokoll) | die zehn Regeln oben erfüllt |
+| **5d – Desktop-Feinschliff** ✅ | Tastenkürzel (Strg+K/N/,/S, `?` Übersicht), Tray-Tooltip mit Zustand, Benachrichtigungen bei verstecktem Fenster, Einstellungen „Desktop-App“ (Autostart, Benachrichtigungen, Ordner, Protokoll) | die zehn Regeln oben erfüllt |
 | **5e – Updates** ✅ | Signaturschlüssel (öffentlicher Teil in `tauri.conf.json`), `latest.json`, Release-Workflow bei Tag mit Versionsprüfung, `scripts/bump_version.py`, Update-Prüfung und -Installation aus der App | ein Update von v0.1 auf v0.2 läuft durch – steht noch aus: braucht die Secrets im Repository und zwei Tags |
 
-**Stand 5b.** Gemessen am Linux-Build (Ordner, 302 MB, davon 230 MB die Claude-CLI des Agent-SDK): die Adresse
+**Stand 5b.** Gemessen am Linux-Build (Ordner): die Adresse
 steht nach 0,98 s auf stdout, `/api/health` antwortet nach 1,05 s. Ohne Token antwortet die Oberfläche mit 401, der
-erste Link setzt das Cookie, danach läuft alles wie gewohnt; `mtgdeck-backend mcp` meldet 43 Werkzeuge über stdio.
+erste Link setzt das Cookie, danach läuft alles wie gewohnt.
 Die Windows-Exe baut und prüft der Workflow `.github/workflows/desktop.yml`.
 
 **Stand 5c.** Die Hülle besteht aus `backend.rs` (Aufsicht) und `lib.rs` (Fenster, Tray, Plugins, Selbsttest), die
@@ -193,18 +181,16 @@ beschränkt. `cargo check --target x86_64-pc-windows-msvc` läuft auch unter Lin
 Windows-Runner (Rust stabil, `npx @tauri-apps/cli build`, NSIS lädt Tauri selbst). Der Workflow führt die Exe mit
 `--selftest` aus und lädt den Installer als Artefakt hoch. Gemessen auf dem Windows-Runner: Backend-Build 30 s,
 Rust-Build kalt 8 min, Installer 105 MB (NSIS/LZMA über rund 600 MB Backend), Lauf insgesamt gut 10 min; der
-Selbsttest meldet `ok`, `frozen`, `skills`, `claude_cli`.
+Selbsttest meldet `ok` und `frozen`.
 
 **Stand 5d.** Die Brücke (`gui/desktop.py` ↔ `bridge.rs`) hält die Oberfläche frei von Tauri-IPC: Tooltip, Hinweise
-und Befehle gehen über die lokale API. Anmelden läuft über `claude auth login` im Terminal der App, der Zustand kommt
-von `claude auth status --json`. Der KI-Status in den Einstellungen war seit dem Aufräumen (5a) leer geblieben
-(verwaister Aufruf nach dem entfernten Fragen-Panel) – beim Prüfen im Browser gefunden und behoben.
+und Befehle gehen über die lokale API.
 
 **v0.1.0 auf einem echten Windows:** Das Fenster zeigte nur das 401-JSON der Token-Sperre. Das Cookie war `SameSite=Strict`, und WebView2 schickt ein Strict-Cookie nicht auf der Navigation, die auf die Weiterleitung von `/?token=` folgt, weil die Startseite der Hülle auf `tauri.localhost` liegt (anderer Site). Mit `Lax` lädt die App; fremde Seiten bleiben durch Origin-Prüfung und CORS draußen (in Chromium nachgestellt, `test_launch.py`). Behoben in v0.1.1.
 
 **v0.1.1 → v0.1.2 auf einem echten Windows:** Download und Start des Installers liefen, das Kopieren scheiterte mit
-„Schreiben nicht möglich“. Der Tauri-Updater beendet nur das Hauptprogramm; `mtgdeck-backend.exe` samt MCP-Server und
-`claude.exe` lief weiter und hielt die Dateien in `resources\backend` offen. Behoben doppelt: die Hülle beendet vor
+„Schreiben nicht möglich“. Der Tauri-Updater beendet nur das Hauptprogramm; `mtgdeck-backend.exe` samt Kindprozessen lief
+weiter und hielt die Dateien in `resources\backend` offen. Behoben doppelt: die Hülle beendet vor
 dem Installieren den ganzen Prozessbaum (`taskkill /T`), und ein NSIS-Hook (`hooks.nsh`, `installerHooks`) tut das
 vor dem Kopieren noch einmal – so klappt auch das Update aus einer älteren App und eine Installation über eine
 laufende. Dabei aufgefallen: Der Cache lag im Programmordner (`%LOCALAPPDATA%\MTG Deckbuilder\cache`), jetzt unter
@@ -233,5 +219,4 @@ selbst“ ist damit der nächste Schritt auf einem echten Windows.
 
 - kein macOS/Linux-Build (Entscheidung aus dem Gesamtplan);
 - keine eigene Titelleiste mit eigenen Knöpfen – die Systemleiste kann alles, was wir brauchen;
-- kein Store-Eintrag, keine Telemetrie;
-- der MCP-Server für Claude Code bleibt, wie er ist (die Desktop-App ersetzt `uv run mtg-gui`, nicht Claude Code).
+- kein Store-Eintrag, keine Telemetrie.

@@ -118,8 +118,7 @@ def stats(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def learn_focus(items: list[dict[str, Any]], top: int = 3) -> str:
-    """Focus text for upgrade suggestions from the most common problems and the Runden-Helfer's logs
-    (empty without either)."""
+    """What to work on, from the most common problems and the Runden-Helfer's logs (empty without either)."""
     st = stats(items)
     parts = [f"{ISSUES[i['key']][1]} ({i['count']}× „{i['label']}“)" for i in st["issues"][:top]]
     r = st["rounds"]
@@ -176,12 +175,6 @@ def round_turns(rnd: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def slim_round(rnd: dict[str, Any]) -> dict[str, Any]:
-    """A round without its raw log: end state plus the turns (for Claude)."""
-    keep = ("start_life", "life", "poison", "turns", "started", "ended", "cmd")
-    return {k: rnd.get(k) for k in keep} | {"per_turn": round_turns(rnd)}
-
-
 def rounds(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     """What the Runden-Helfer's logs say over all games: who dealt the most damage (commander damage plus life
     losses put on an opponent), life lost per own turn and the worst turn. None without logged rounds."""
@@ -215,18 +208,8 @@ def rounds(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     }  # fmt: skip
 
 
-def rounds_line(r: dict[str, Any]) -> str:
-    """One German sentence about ``rounds()`` for Claude's prompts."""
-    hurt = ", ".join(f"{s['name']} {s['damage']}" + (f" (davon {s['cmd']} Commander-Schaden)" if s["cmd"] else "") for s in r["sources"][:3])
-    worst = r["worst_turn"]
-    return (f"Runden-Helfer ({r['rounds']} {'Runde' if r['rounds'] == 1 else 'Runden'} mitgezählt): "
-            + (f"am meisten Schaden: {hurt}; " if hurt else "")
-            + (f"schwerster eigener Zug: Zug {worst['turn']} (im Schnitt {de_num(worst['avg_lost'], 1)} Leben verloren); " if worst else "")
-            + (f"Leben am Ende im Schnitt {de_num(r['avg_end_life'], 1)}." if r["avg_end_life"] is not None else "")).rstrip("; ")
-
-
 def summary(deck_slug: str) -> dict[str, Any]:
-    """Games plus statistics – what the MCP tool and the GUI return. A game with a round log gets ``round_turns``."""
+    """Games plus statistics – what the GUI returns. A game with a round log gets ``round_turns``."""
     items = games(deck_slug)
     shown = [g | {"round_turns": round_turns(g["round"])} if isinstance(g.get("round"), dict) else g for g in items]
     return {"games": shown, "stats": stats(items), "learn_focus": learn_focus(items),

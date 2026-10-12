@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from mtgdeck import blacklist, deckedit, mcp_server, scryfall
+from mtgdeck import blacklist, deckedit, scryfall
 from mtgdeck.gui import app as gui
 from mtgdeck.validate import validate_deck
 
@@ -87,17 +87,10 @@ async def test_price_rule_and_search_tools_skip_rule_hits(monkeypatch):
     assert [c["name"] for c in await deckedit.role_candidates(deck, "tutor")] == ["Demonic Tutor", "Vampiric Tutor", "Cultivate"]
     await blacklist.update(add=["Alle Tutoren"])
     assert [c["name"] for c in await deckedit.role_candidates(deck, "tutor")] == ["Cultivate"]
-    assert [c["name"] for c in (await mcp_server.search_cards("otag:tutor"))["cards"]] == ["Cultivate"]
 
 
-async def test_mcp_get_blacklist_and_gui_routes():
+async def test_blacklist_gui_routes():
     await blacklist.update(add=["Sol Ring", "Fetchlands", "@keine Stax"])
-    out = await mcp_server.get_blacklist()
-    assert out["blacklist"] == ["Sol Ring"]
-    fetch = next(r for r in out["rules"] if r["key"] == "fetchlands")
-    assert "Polluted Delta" in fetch["cards"] and fetch["checked"]
-    assert any(r["label"] == "keine Stax" and not r["checked"] for r in out["rules"])
-
     client = TestClient(gui.app)
     data = client.get("/api/blacklist").json()
     assert data["cards"] == ["Sol Ring"] and len(data["rules"]) == 2
