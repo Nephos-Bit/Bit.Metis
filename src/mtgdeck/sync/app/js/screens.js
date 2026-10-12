@@ -1,7 +1,6 @@
 // The four tabs and their detail screens. Each screen returns {html, fab, bar, bind}; main.js draws it.
 
 import { currentDeck, deckBy, failedOps, gamesOf, isDemo, isPending, op, oppBy, oppName, oppSub, pendingCount, setPref, shortName, state } from "./data.js";
-import { askSheet } from "./claude.js";
 import { roundCard, running, startSheet } from "./round.js";
 import { cardSheet, editOpponentSheet, gameDetailSheet, gameSheet, opponentSheet, settingsSheet, switchDeckSheet } from "./forms.js";
 import * as scry from "./scry.js";
@@ -68,8 +67,6 @@ export function tisch() {
         <span class="main"><span class="title">Gegnerdeck festhalten</span><span class="subtitle">Jemand hat ein neues Deck dabei</span></span>${icon("chev-r", "sm chev")}</button>
       <a class="row" href="#/karten"><span class="res win" aria-hidden="true">${icon("search", "sm")}</span>
         <span class="main"><span class="title">Karte nachschlagen</span><span class="subtitle">Text auf Deutsch, auch für Karten deiner Decks</span></span>${icon("chev-r", "sm chev")}</a>
-      <button class="row" type="button" id="quick-ask"><span class="res ai" aria-hidden="true">${icon("spark", "sm")}</span>
-        <span class="main"><span class="title">Claude fragen</span><span class="subtitle">Strategie, Matchup oder Regelfrage – dein PC antwortet</span></span>${icon("chev-r", "sm chev")}</button>
     </div>`;
   return {
     html, fab: running() ? { label: "Zur Runde", icon: "heart", run: () => { location.hash = "#/runde"; } } : d ? { label: "Partie eintragen", run: () => gameSheet() } : null,
@@ -79,7 +76,6 @@ export function tisch() {
       $("#switch-deck", el)?.addEventListener("click", switchDeckSheet);
       $("#show-r0", el)?.addEventListener("click", () => showRule0(d));
       $("#quick-opp", el).addEventListener("click", () => opponentSheet());
-      $("#quick-ask", el).addEventListener("click", () => askSheet());
       $("#round-start", el)?.addEventListener("click", startSheet);
       $("#status-line", el)?.addEventListener("click", settingsSheet);
       $("#install-hint .x", el)?.addEventListener("click", () => { setPref("installHintDone", true); window.dispatchEvent(new Event("redraw")); });
@@ -155,7 +151,7 @@ export function decks() {
   return { html, bar: { title: "Decks", watch: ".large-title h1" } };
 }
 
-const SEGMENTS = [["rule0", "Rule 0"], ["anleitung", "Anleitung"], ["karten", "Karten"], ["partien", "Partien"]];
+const SEGMENTS = [["rule0", "Rule 0"], ["karten", "Karten"], ["partien", "Partien"]];
 const CATS = ["Ramp", "Draw", "Removal", "Board Wipe", "Counterspell", "Tutor", "Protection", "Synergy", "Win Condition", "Utility", "Land"];
 const CAT_LABELS = { Ramp: "Ramp", Draw: "Kartenzug", Removal: "Removal", "Board Wipe": "Board Wipes", Counterspell: "Counterspells",
   Tutor: "Tutoren", Protection: "Schutz", Synergy: "Synergie", "Win Condition": "Siegbedingung", Utility: "Sonstiges", Land: "Länder", "": "Sonstiges" };
@@ -173,14 +169,12 @@ export function deck(slug, seg = "rule0") {
       ${d.description ? `<p class="sub muted">${esc(d.description)}</p>` : ""}
       <div class="recordbar"><div class="w"><b>${r.wins}</b><span>Siege</span></div><div class="l"><b>${r.losses}</b><span>Niederlagen</span></div>
         <div><b>${r.games ? Math.round((100 * r.wins) / r.games) : 0} %</b><span>${plural(r.games, "Partie", "Partien")}</span></div></div>
-      <button class="btn tint ask-deck" type="button" id="ask-deck">${icon("spark", "sm")}Claude zu diesem Deck fragen</button>
     </div>
     <div class="seg-sticky"><div class="segmented" role="tablist">${SEGMENTS.map(([k, label]) => `<button type="button" role="tab" data-seg="${k}" aria-pressed="${k === seg}" aria-selected="${k === seg}">${label}</button>`).join("")}</div></div>
     <div id="seg-body">${segment(d, seg)}</div>`;
   return {
     html, bar: { title: d.name, back: { href: "#/decks", label: "Decks" }, watch: ".detail-head h1" },
     bind(el) {
-      $("#ask-deck", el).addEventListener("click", () => askSheet({ prefill: `Zu meinem Deck „${d.name}“: ` }));
       for (const b of $$("[data-seg]", el)) b.addEventListener("click", () => {
         history.replaceState(history.state, "", `#/decks/${slug}/${b.dataset.seg}`);
         for (const x of $$("[data-seg]", el)) { x.setAttribute("aria-pressed", x === b); x.setAttribute("aria-selected", x === b); }
@@ -199,17 +193,6 @@ function segment(d, seg) {
     return `<div class="group r0">${d.rule0.rows.filter((r) => r.label !== "Commander").map((r) => `<div class="row${r.flag ? " flagged" : ""}"><span class="main">
       <span class="label">${r.flag ? `${icon("flag", "xs")} ` : ""}${esc(r.label)}</span><span class="value">${esc(r.value)}</span></span></div>`).join("")}</div>
       <div class="btn-col"><button class="btn primary big" type="button" data-r0>${icon("shield", "sm")}Zum Zeigen öffnen</button></div>`;
-  }
-  if (seg === "anleitung") {
-    const g = d.guide;
-    if (!g) return empty("book", "Noch keine Anleitung", "Am PC im Deck unter „Anleitung“ erstellen – danach steht sie hier, auch offline.");
-    const list = (title, items) => (items?.length ? `<h3>${title}</h3><ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "");
-    return `<div class="guide"><p class="plan">${esc(g.plan)}</p>
-      ${list("Früh (Züge 1–3)", g.early)}${list("Mitte", g.mid)}${list("Spät", g.late)}${list("Starthand", g.mulligan)}
-      ${g.key_cards?.length ? `<h3>Schlüsselkarten</h3><div class="group">${g.key_cards.map((k) => `<button class="row" type="button" data-card-open="${esc(k.name)}">
-        <span class="thumb card-thumb">${art(k.name, "small", "thumb card-thumb")}</span><span class="main"><span class="title">${esc(k.name)}</span>
-        <span class="subtitle">${esc(k.why || "")}</span></span></button>`).join("")}</div>` : ""}
-      ${list("So gewinnst du", g.win_conditions)}${list("Vorsicht", g.watch_out)}${list("Tipps", g.tips)}</div>`;
   }
   if (seg === "karten") {
     const groups = {};

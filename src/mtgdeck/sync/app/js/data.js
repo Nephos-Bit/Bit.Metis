@@ -17,12 +17,10 @@ const SEND_DELAY_DEMO = 1500;
 const TIMEOUT_MS = 12000;
 const FLUSH_EVERY = 30000;
 const STATUS_EVERY = 60000;
-const STATUS_FAST = 3000;  // while a question for Claude is open
-const TITLE_LEN = 70;      // like chat.py
 
 export const state = {
   mode: "none", device: null, base: null, snap: null, etag: null, ops: [], prefs: load(KEY_PREFS, {}),
-  online: true, revoked: false, lastSync: null, pcs: [], syncing: false, jobs: [],
+  online: true, revoked: false, lastSync: null, pcs: [], syncing: false,
 };
 const listeners = new Set();
 export const onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
@@ -47,9 +45,12 @@ export async function boot() {
   emit();
 }
 
+// questions for Claude were removed: ones still queued from an older version of the app are dropped
+const dropChat = (ops) => ops.filter((o) => !String(o.type).startsWith("chat."));
+
 function bootLive() {
   state.mode = "live";
-  state.ops = load(KEY_OPS, []);
+  state.ops = dropChat(load(KEY_OPS, []));
   const cached = load(KEY_BASE, null);
   state.base = cached?.data || null;
   state.etag = cached?.etag || null;
@@ -63,13 +64,13 @@ async function bootDemo() {
   const res = await fetch("/app/demo.json", { cache: "no-cache" });
   if (!res.ok) throw new Error("Beispieldaten fehlen");
   state.base = shiftDemoDates(await res.json());
-  state.ops = load(KEY_DEMO_OPS, []);
+  state.ops = dropChat(load(KEY_DEMO_OPS, []));
   rebuild();
   for (const o of state.ops.filter((x) => x.status === "pending")) demoSend(o);
 }
 
 export async function startDemo() { save(KEY_MODE, "demo"); await bootDemo(); }
-export function endDemo() { save(KEY_MODE, null); Object.assign(state, { mode: "none", snap: null, base: null, ops: [], jobs: [] }); emit(); }
+export function endDemo() { save(KEY_MODE, null); Object.assign(state, { mode: "none", snap: null, base: null, ops: [] }); emit(); }
 
 // demo data were written at a fixed time: move everything so the last game was "just now"
 const DATE_KEYS = new Set(["played", "updated", "created", "at", "last"]);
@@ -136,7 +137,7 @@ export async function disconnect() {
   try { await api(`/api/devices/${encodeURIComponent(state.device?.device_id || "")}`, { method: "DELETE" }); } catch { /* offline: forget locally */ }
   stopTimers();
   for (const k of [KEY_DEVICE, KEY_BASE, KEY_OPS]) save(k, null);
-  Object.assign(state, { mode: "none", device: null, base: null, snap: null, etag: null, ops: [], revoked: false, pcs: [], jobs: [] });
+  Object.assign(state, { mode: "none", device: null, base: null, snap: null, etag: null, ops: [], revoked: false, pcs: [] });
   emit();
 }
 
@@ -228,10 +229,9 @@ async function pollStatus() {
     const res = await api("/api/app/status");
     if (!res.ok) return;
     const st = await res.json();
-    const shown = () => JSON.stringify([state.pcs.map(({ last_seen, ...p }) => p), state.jobs, state.online]);  // last_seen ticks on every request
+    const shown = () => JSON.stringify([state.pcs.map(({ last_seen, ...p }) => p), state.online]);  // last_seen ticks on every request
     const before = shown();
     state.pcs = st.pcs || [];
-    state.jobs = st.jobs || [];
     state.online = true;
     if (tagCore(st.etag) !== tagCore(state.etag)) await refresh();
     else if (shown() !== before) emit();  // redraw only when something visible changed
@@ -244,7 +244,6 @@ function startTimers() {
   const visible = () => document.visibilityState === "visible";
   timers.push(setInterval(() => { if (visible()) flush(); }, FLUSH_EVERY));
   timers.push(setInterval(() => { if (visible()) pollStatus(); }, STATUS_EVERY));
-  timers.push(setInterval(() => { if (visible() && questionsOpen()) pollStatus(); }, STATUS_FAST));  // answers come quickly
   pollStatus();
 }
 function stopTimers() { timers.forEach(clearInterval); timers = []; }
@@ -258,10 +257,6 @@ addEventListener("pageshow", (e) => { if (e.persisted) wake(); });
 // ---------- operations -------------------------------------------------------------------------
 
 export const pendingCount = () => state.ops.filter((o) => o.status === "pending").length;
-/** The server's state of a question for Claude (``waiting`` / ``running`` with ``progress`` / ``done`` / ``failed``). */
-export const jobOf = (messageId) => state.jobs.find((j) => j.id === messageId) || null;
-export const questionsOpen = () => state.jobs.some((j) => j.status === "waiting" || j.status === "running")
-  || state.ops.some((o) => o.type === "chat.ask" && o.status !== "failed" && !(state.snap?.chats || []).some((c) => c.messages.some((m) => m.id === o.payload.message_id && m.answer)));
 export const failedOps = () => state.ops.filter((o) => o.status === "failed");
 
 export function op(type, payload) {
@@ -269,23 +264,8 @@ export function op(type, payload) {
   state.ops.push(entry);
   saveOps();
   rebuild();
-  if (state.mode === "demo") demoSend(entry); else flush(true).then(() => { if (type.startsWith("chat.")) pollStatus(); });
+  if (state.mode === "demo") demoSend(entry); else flush(true);
   return entry;
-}
-
-/** A question for Claude (new conversation without ``chatId``); returns ``{chat_id, message_id}``. */
-export function ask(question, { chatId = null, deep = false } = {}) {
-  const payload = { chat_id: chatId || uid(), message_id: uid().slice(0, 10), question: question.trim(), deep: !!deep };
-  op("chat.ask", payload);
-  return payload;
-}
-
-/** Take back an open question: not sent yet → it disappears; on the server → ``chat.cancel``. */
-export function cancelQuestion(chatId, messageId) {
-  const pending = state.ops.find((o) => o.type === "chat.ask" && o.payload.message_id === messageId && o.status === "pending");
-  if (pending) { dropOp(pending.id); return; }
-  state.jobs = state.jobs.filter((j) => j.id !== messageId);
-  op("chat.cancel", { chat_id: chatId, message_id: messageId });
 }
 
 function demoSend(entry) {  // the demo "server" accepts after a moment
@@ -295,33 +275,7 @@ function demoSend(entry) {  // the demo "server" accepts after a moment
     o.status = "sent";
     saveOps();
     rebuild();
-    if (o.type === "chat.ask") demoAnswer(o.payload);
   }, SEND_DELAY_DEMO);
-}
-
-// the demo "PC": shows what Claude is doing, then answers honestly that this is the preview
-const DEMO_STEPS = ["verschafft sich einen Überblick", "sieht sich „Meren Aristocrats“ an", "liest Kartentexte", "schreibt die Antwort"];
-function demoAnswer(p) {
-  const id = p.message_id;
-  state.jobs = [...state.jobs.filter((j) => j.id !== id), { id, chat_id: p.chat_id, status: "running", progress: DEMO_STEPS[0] }];
-  emit();
-  DEMO_STEPS.forEach((step, i) => setTimeout(() => {
-    const j = state.jobs.find((x) => x.id === id);
-    if (!j || state.mode !== "demo") return;
-    j.progress = step;
-    emit();
-  }, 1100 * i));
-  setTimeout(() => {
-    if (state.mode !== "demo" || !state.jobs.some((j) => j.id === id)) return;
-    state.jobs = state.jobs.map((j) => (j.id === id ? { ...j, status: "done", progress: null } : j));
-    state.ops.push({ id: uid(), type: "chat.demo_answer", at: nowIso(), status: "sent", payload: { chat_id: p.chat_id, message_id: id,
-      answer: "**Das ist die Vorschau** – hier antwortet noch kein echter PC.\n\nMit deinem PC verbunden liest Claude für deine Frage "
-        + "deine Decks, Partien und Gegnerdecks und antwortet meist nach einer halben bis anderthalb Minuten. Zum Beispiel so:\n\n"
-        + "- Gegen schnelle Combo-Decks hält {{meren-aristocrats}} [[Grave Pact]] lieber zurück, bis die Combo-Teile liegen.\n"
-        + "- Karten und Decks in der Antwort kannst du antippen.\n\nVerbinden: **Einstellungen → Mit meinem PC verbinden**." } });
-    saveOps();
-    rebuild();
-  }, 1100 * DEMO_STEPS.length);
 }
 
 const INVERSE = {
@@ -356,7 +310,6 @@ export function dropOp(opId) {
 
 export function resetDemo() {
   state.ops = [];
-  state.jobs = [];
   saveOps();
   rebuild();
 }
@@ -429,8 +382,6 @@ function apply(snap, op) {
     }
   } else if (op.type === "opponent.delete") {
     snap.opponents = snap.opponents.filter((o) => o.id !== p.id);
-  } else if (op.type.startsWith("chat.")) {
-    applyChat(snap, op, p);
   } else {
     const o = snap.opponents.find((x) => x.id === p.id);
     if (!o) return;
@@ -442,26 +393,6 @@ function apply(snap, op) {
     } else if (op.type === "opponent.note_delete") {
       o.notes = (o.notes || []).filter((n) => n.id !== p.note_id);
     }
-  }
-}
-
-const chatTitle = (q) => { const t = q.split(/\s+/).join(" ").trim(); return t.length <= TITLE_LEN ? t : `${t.slice(0, TITLE_LEN - 2).trimEnd()} …`; };
-function applyChat(snap, op, p) {
-  const chats = (snap.chats ||= []);
-  let c = chats.find((x) => x.id === p.chat_id);
-  if (op.type === "chat.ask") {
-    if (!c) { c = { id: p.chat_id, title: chatTitle(p.question), created: op.at, updated: op.at, messages: [] }; chats.push(c); }
-    if (!c.messages.some((m) => m.id === p.message_id)) {
-      c.messages.push({ id: p.message_id, asked: op.at, question: p.question, answer: null, status: "waiting", deep: !!p.deep, source: "phone",
-        pending: op.status === "pending" });
-    }
-    c.updated = op.at;
-  } else if (c && op.type === "chat.cancel") {
-    c.messages = c.messages.filter((m) => !(m.id === p.message_id && !m.answer));
-    if (!c.messages.length) snap.chats = chats.filter((x) => x !== c);
-  } else if (c && op.type === "chat.demo_answer") {
-    const m = c.messages.find((x) => x.id === p.message_id);
-    if (m && !m.answer) { m.answer = p.answer; delete m.status; }
   }
 }
 
@@ -482,7 +413,6 @@ function faced(o, g) {
 }
 
 function recompute(snap) {
-  (snap.chats ||= []).sort((a, b) => String(b.updated || "").localeCompare(String(a.updated || "")));
   snap.games.sort((a, b) => String(b.played).localeCompare(String(a.played)));
   for (const d of snap.decks) d.record = recordOf(snap.games.filter((g) => g.deck === d.slug));
   const names = Object.fromEntries(snap.decks.map((d) => [d.slug, d.name]));
