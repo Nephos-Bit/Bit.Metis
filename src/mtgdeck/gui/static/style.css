@@ -187,7 +187,7 @@ input:disabled, select:disabled, textarea:disabled { opacity: .5; }
 .field-label { display: block; font-size: 14px; font-weight: 550; margin-bottom: 6px; }
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; min-height: 24px; cursor: pointer; }
 .checks { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin-bottom: var(--space-4); }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); align-items: end; }
 .inline-form { display: flex; gap: var(--space-2); }
 .inline-form input { flex: 1; }
 
@@ -674,7 +674,7 @@ kbd { font: 600 11px var(--mono); padding: 1px 5px; border: 1px solid var(--bord
 }
 @media (max-width: 600px) {
   .brackets small { display: none; }
-  .row2 { grid-template-columns: 1fr 1fr; }
+  .row2 { grid-template-columns: 1fr; gap: 0; }
   .print-steps li { grid-template-columns: 1fr; }
   .print-steps li::before { display: none; }
   .step-actions { justify-content: flex-start; }

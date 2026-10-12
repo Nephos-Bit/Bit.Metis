@@ -98,12 +98,12 @@
             <p class="drop-tip small"><svg class="icon"><use href="#i-cards"/></svg><span><b>Tipp:</b> Öffne scryfall.com daneben und zieh den Commander
               einfach hier herein. Im offenen Deck landet jede hereingezogene Karte direkt in der Liste.</span></p>
             <div class="row2">
-              <label class="field">Commander <input id="manual-cmd" list="ac-manual" placeholder="z. B. Meren (auch deutsch)"><datalist id="ac-manual"></datalist></label>
-              <label class="field">Partner / Background <span class="muted">(optional)</span><input id="manual-partner" list="ac-manual-p"><datalist id="ac-manual-p"></datalist></label>
+              <label class="field"><span>Commander</span><input id="manual-cmd" list="ac-manual" placeholder="z. B. Meren (auch deutsch)"><datalist id="ac-manual"></datalist></label>
+              <label class="field"><span>Partner / Background <span class="muted">(optional)</span></span><input id="manual-partner" list="ac-manual-p"><datalist id="ac-manual-p"></datalist></label>
             </div>
             <div class="row2">
-              <label class="field">Deckname <span class="muted">(optional)</span><input id="manual-name" maxlength="120" placeholder="sonst der Commander"></label>
-              <label class="field">Bracket <select id="manual-bracket"><option value="1">1 – Exhibition</option><option value="2" selected>2 – Core</option>
+              <label class="field"><span>Deckname <span class="muted">(optional)</span></span><input id="manual-name" maxlength="120" placeholder="sonst der Commander"></label>
+              <label class="field"><span>Bracket</span><select id="manual-bracket"><option value="1">1 – Exhibition</option><option value="2" selected>2 – Core</option>
                 <option value="3">3 – Upgraded</option><option value="4">4 – Optimized</option><option value="5">5 – cEDH</option></select></label>
             </div>
             <button type="button" class="btn primary" id="manual-btn">Leeres Deck anlegen</button>
@@ -673,9 +673,9 @@
           <h2>Gegnerdeck merken</h2>
           <div class="row2">
             <label class="field">Commander <input name="commander" list="ac-opp-new" required placeholder="z. B. Atraxa (auch deutsch)"><datalist id="ac-opp-new"></datalist></label>
-            <label class="field">Spieler / eigener Name <span class="muted">(optional)</span><input name="label" placeholder="z. B. Tims Atraxa" maxlength="80"></label>
+            <label class="field"><span>Spieler / eigener Name <span class="muted">(optional)</span></span><input name="label" placeholder="z. B. Tims Atraxa" maxlength="80"></label>
           </div>
-          <label class="field">Was ist dir aufgefallen? <span class="muted">(optional)</span>
+          <label class="field"><span>Was ist dir aufgefallen? <span class="muted">(optional)</span></span>
             <input name="note" placeholder="z. B. gewinnt mit Combo, viele Board Wipes, sehr schnell" maxlength="1000"></label>
           <div class="form-actions"><button type="submit" class="btn primary"><svg class="icon"><use href="#i-plus"/></svg>Merken</button></div>
         </form>
