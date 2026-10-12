@@ -571,7 +571,7 @@ export function settingsSheet() {
         <div class="row"><span class="main"><span class="subtitle">Dieses Handy</span><span class="title">${esc(d?.name || "Handy")}</span></span>
           <span class="trail">${d?.paired_at ? `seit ${esc(new Date(d.paired_at).toLocaleDateString("de-DE"))}` : ""}</span></div>
         ${state.pcs.map((pc) => `<div class="row"><span class="status-dot ${pc.online ? "" : "off"}"></span><span class="main"><span class="title">PC „${esc(pc.name)}“</span>
-          <span class="subtitle">${pc.online ? `online${pc.ai ? " · Claude bereit" : ""}` : `zuletzt ${esc(ago(new Date(pc.last_seen * 1000).toISOString()))}`}</span></span></div>`).join("")}
+          <span class="subtitle">${pc.online ? "online" : `zuletzt ${esc(ago(new Date(pc.last_seen * 1000).toISOString()))}`}</span></span></div>`).join("")}
       </div>
       ${failed.length ? `<div class="field-label">Nicht übernommen</div><div class="group settings">${failed.map((o) => `<div class="row"><span class="main">
           <span class="title">${esc(OP_LABEL[o.type]?.(o.payload) || o.type)}</span><span class="subtitle wrap">${esc(o.error || "")}</span></span>

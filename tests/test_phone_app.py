@@ -30,7 +30,7 @@ def test_snapshot_has_what_the_phone_shows():
     assert d["description"] == "Opfern und zurückholen."
     gc = next(r for r in d["rule0"]["rows"] if r["label"] == "Game Changer")
     assert gc["flag"] and "Demonic Tutor" in gc["value"] and "Rule 0" in d["rule0"]["text"]
-    assert d["guide"]["key_cards"] == [{"name": "Sol Ring", "why": "Mana"}]  # no images from the PC
+    assert "guide" not in d and "chats" not in snap  # no Claude texts on the phone
     assert d["cards"][1] == {"name": "Forest", "qty": 30, "category": "Land"}
     assert [g["id"] for g in snap["games"]] == ["g2", "g1"] and snap["games"][0]["deck"] == "meren"
     atraxa, krenko = sorted(snap["opponents"], key=lambda o: o["id"])
@@ -201,11 +201,13 @@ def test_phone_reads_data_sends_operations_and_the_pc_gets_them(tmp_path, monkey
     ops = [_op("game.add", {"game": {"id": "gphone1", "deck": "meren", "result": "win", "turn": 9, "how": "combat"},
                             "opponents": [{"id": "o1", "commander": "Atraxa, Praetors' Voice"}, {"commander": "Krenko, Mob Boss", "new_id": "krenko1", "colors": "R"}]}, "opphone01"),
            _op("game.add", {"game": {"id": "gphone2", "deck": "gone", "result": "win"}}, "opphone02"),
-           _op("opponent.update", ["kaputt"], "opphone03")]  # fmt: skip
+           _op("opponent.update", ["kaputt"], "opphone03"),
+           _op("chat.ask", {"chat_id": "a" * 12, "message_id": "b" * 10, "question": "Hallo?"}, "opphone04")]  # fmt: skip
     res = client.post("/api/app/ops", json={"ops": ops}, headers=auth).json()
     assert res["results"][0] == {"id": "opphone01", "ok": True}
     assert res["results"][1]["ok"] is False and "gibt es nicht mehr" in res["results"][1]["error"]
     assert res["results"][2] == {"id": "opphone03", "ok": False, "error": "Ungültige Daten"}  # fails alone, never blocks the queue
+    assert res["results"][3] == {"id": "opphone04", "ok": False, "error": "Unbekannte Aktion: chat.ask"}  # questions for Claude are gone
     assert res["etag"] != etag
     again = client.post("/api/app/ops", json={"ops": ops[:1]}, headers=auth).json()  # answer was lost: sent again
     assert again["results"][0]["ok"]
@@ -214,6 +216,8 @@ def test_phone_reads_data_sends_operations_and_the_pc_gets_them(tmp_path, monkey
 
     status = client.get("/api/app/status", headers=auth).json()
     assert status["pcs"][0]["name"] == "PC" and status["device"]["name"] == "Handy"
+    assert set(status["pcs"][0]) == {"name", "online", "last_seen"} and "jobs" not in status
+    assert client.post("/api/jobs/claim", headers=auth).status_code in (404, 405)
 
     run = service.run(roots=pc, client=client)  # the PC syncs: the game is there as if typed in at the PC
     assert run["ok"] and "Partien mit „Meren“" in run["incoming"]
