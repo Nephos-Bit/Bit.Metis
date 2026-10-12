@@ -50,7 +50,7 @@ jobs:
           if (-not $url) { throw "backend printed no MTGDECK_URL" }
           $health = Invoke-RestMethod "$($url.Split('?')[0])api/health"
           Stop-Process -Id $p.Id -Force
-          if (-not $health.ok -or -not $health.frozen -or -not $health.skills -or -not $health.claude_cli) { throw "health: $($health | ConvertTo-Json)" }
+          if (-not $health.ok -or -not $health.frozen) { throw "health: $($health | ConvertTo-Json)" }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:

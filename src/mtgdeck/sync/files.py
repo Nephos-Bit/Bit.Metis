@@ -212,7 +212,7 @@ def describe(path: str, names: dict[str, str] | None = None) -> str:
     if parts[:2] == ["decks", ".games"]:
         return f"Partien mit {deck(parts[2].removesuffix('.json'))}"
     if parts[:2] == ["decks", ".chats"]:
-        return "Gespräch mit Claude"
+        return "Altes Gespräch"
     if parts[:2] == ["proxies", ".orders"]:
         return "Sammelbestellung"
     if parts[0] == "proxies" and len(parts) > 2:

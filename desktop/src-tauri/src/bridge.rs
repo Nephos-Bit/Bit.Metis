@@ -1,6 +1,6 @@
 //! The bridge to the backend while the app runs: every few seconds the shell posts its state to
 //! `/api/desktop/poll` and gets back the tray tooltip (sync state, running jobs), notices it shows as system
-//! notifications while the window is hidden (deck finished, answer from Claude, news from the phone), and the
+//! notifications while the window is hidden (news from your other devices), and the
 //! commands the settings page queued (autostart on/off, open the data folder or the log).
 
 use std::thread;

@@ -1,23 +1,20 @@
-# MTG Commander Deckbuilder für Claude Code
+# MTG Commander Deckbuilder
 
-Du beschreibst in Claude Code, was du willst („Baue mir ein Meren-Deck, Bracket 3, max. 150 €“).
-Claude nutzt dann den Skill **`commander-deckbuilder`** und den MCP-Server **`mtg`**: Es recherchiert
-auf Scryfall, EDHREC und Commander Spellbook, baut ein 100-Karten-Deck, prüft Legalität und Bracket-Regeln
-und speichert das Ergebnis. Alternativ geht das Ganze auch über eine **Web-GUI**.
+Ein Werkzeug, um Commander-Decks selbst zu bauen und zu pflegen: Decks per Link, Liste oder als
+Starterdeck importieren oder selbst zusammenstellen, gegen Bracket-Regeln, Budget, Blacklist und
+Tischregeln prüfen, testen, Partien festhalten und Proxies drucken. Die Ideen kommen von dir – die App
+liefert Kartendaten, Prüfungen und Vorschläge aus Scryfall, EDHREC und Commander Spellbook.
 
 ```
-Du ──► Claude Code ──► Skill: commander-deckbuilder (Workflow, Bracket-Regeln, Deck-Template)
-                  └──► MCP-Server "mtg" ──► Scryfall API + Bulk-Daten (lokale SQLite-DB)
-                                        ├─► EDHREC (Empfehlungen, nach Bracket/Budget/Thema)
-                                        ├─► Commander Spellbook (Combos, Bracket-Schätzung)
-                                        ├─► Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats (Deck-Import)
-                                        └─► MTGJSON (Starterdecks / Precons)
-GUI (Browser) ──► FastAPI ──► Claude Agent SDK ──► gleiche Skills + MCP-Server
+GUI (Browser / Desktop-App) ──► FastAPI ──► Scryfall API + Bulk-Daten (lokale SQLite-DB)
+                                       ├─► EDHREC (Empfehlungen, nach Bracket/Budget/Thema)
+                                       ├─► Commander Spellbook (Combos, Bracket-Schätzung)
+                                       ├─► Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats (Deck-Import)
+                                       └─► MTGJSON (Starterdecks / Precons)
 ```
 
 ## Voraussetzungen
 
-- [Claude Code](https://code.claude.com) (eingeloggt, oder `ANTHROPIC_API_KEY` gesetzt)
 - [uv](https://docs.astral.sh/uv/) (Python-Paketmanager; installiert Python 3.10+ bei Bedarf selbst)
 
 ## Einrichtung
@@ -26,37 +23,11 @@ GUI (Browser) ──► FastAPI ──► Claude Agent SDK ──► gleiche Ski
 git clone https://github.com/liehrdot/mtgdeckbuilder.git
 cd mtgdeckbuilder
 uv sync --extra gui          # Abhängigkeiten inkl. GUI installieren
+uv run mtg-gui               # GUI starten → http://127.0.0.1:8765
 ```
 
-Beim ersten Start von `claude` in diesem Ordner fragt Claude Code, ob du dem Projekt und dem
-MCP-Server `mtg` aus `.mcp.json` vertraust – bestätigen. Kontrolle: `/mcp` in Claude Code.
-
-**Optional, empfohlen:** lokale Kartendatenbank laden (siehe unten). In Claude Code einfach
-„Aktualisiere die Kartendatenbank“ sagen oder in der GUI unter „Einstellungen → Kartendatenbank“ laden.
-
-## Benutzung in Claude Code
-
-```bash
-claude
-```
-
-Dann z. B.:
-
-- `/commander-deckbuilder Meren of Clan Nel Toth, Bracket 2, Budget 100 €`
-- „Baue mir ein Atraxa-Superfriends-Deck für Bracket 4.“
-- „Mir fällt kein Commander ein: ich mag Drachen und große Zauber, Bracket 3.“ → Skill
-  `commander-finder` schlägt 3–5 passende Commander mit Begründung vor, danach wird gebaut
-  (auch direkt: `/commander-finder Vampire mit Lifedrain, budgetfreundlich`).
-- „Baue ein Proxy-Deck mit Atraxa für Bracket 4“ – bei Proxy-Decks spielen Preise keine Rolle.
-- „Setz Cyclonic Rift und Smothering Tithe auf meine Blacklist.“
-- „Mach mein Deck `meren-aristocrats` billiger, max. 80 €.“
-- „Welches Bracket hat dieses Deck? https://archidekt.com/decks/123456“
-- „Wie spiele ich `meren-aristocrats`, und wie schlägt es sich gegen Atraxa?“ – Fragen zu einem Deck
-  beantwortet Claude nur lesend, das Deck bleibt unverändert.
-- „Was ist mein stärkstes Deck und warum?“, „Welches Deck hat das meiste Potential?“, „Wie würdest du
-  welches Deck umbauen?“ – Fragen über alle Decks; Claude startet mit `app_overview` (alle Decks mit
-  Stufe, Power, Deck-Check, Bilanz, fehlenden Karten, dazu Gegner, Tischregeln, Sammlung) und ändert nichts.
-- Deutsche Kartennamen („Schwerter zu Pflugscharen“, „Sol-Ring“) funktionieren mit der lokalen DB.
+**Optional, empfohlen:** lokale Kartendatenbank laden (siehe unten) – in der GUI unter
+„Einstellungen → Kartendatenbank“.
 
 Fertige Decks landen in `decks/<name>.json` und `decks/<name>.txt`. Die `.txt` kannst du direkt in
 Moxfield, Archidekt oder ManaBox importieren.
@@ -73,9 +44,9 @@ Moxfield, Archidekt oder ManaBox importieren.
 
 Stand: WotC-Update vom 21.10.2025 (keine Tutor-Limits mehr) und Game-Changer-Update vom 09.02.2026.
 Die Game-Changer-Liste wird **live von Scryfall** (`is:gamechanger`) gelesen, nicht hart kodiert.
-`validate_deck` fragt zusätzlich Commander Spellbook nach einer Bracket-Schätzung und nach Combos.
+Die Deck-Prüfung fragt zusätzlich Commander Spellbook nach einer Bracket-Schätzung und nach Combos.
 
-## Power-Feinabstimmung: Bracket rauf/runter
+## Power-Feinabstimmung: Ziel-Stärke
 
 Ein Bracket ist breit – deshalb gibt es pro Deck ein **Power-Profil**:
 
@@ -83,14 +54,13 @@ Ein Bracket ist breit – deshalb gibt es pro Deck ein **Power-Profil**:
 - **Hausregeln** (nur strenger als das Bracket): max. Game Changer (z. B. Bracket 4 ohne Game
   Changer, Bracket 3 mit max. 2), max. Tutoren, keine 2-Karten-Combos / Extra Turns / Mass Land Denial.
 - **Stil/Vibe:** z. B. „witzig“, „chaotisch“, „politisch“, „thematisch“ („Bracket 2, aber witzig“).
-- **Power-Score:** `validate_deck` schätzt die Stärke auf der Bracket-Skala (z. B. 3.8 = oberes
+- **Power-Score:** Die Deck-Prüfung schätzt die Stärke auf der Bracket-Skala (z. B. 3.8 = oberes
   Bracket 3) aus Game Changern, Tutoren, Fast Mana, Free Spells, Combos, Kurve und Interaktion –
   transparent mit Einzelposten. Weicht das Deck deutlich von der Ziel-Stufe ab, gibt es eine Warnung.
 
-In Claude Code: „Mach mein Meren-Deck zu einem unteren Bracket 4“, „Bracket 3 mit max. 2 Game
-Changern“, „eine Stufe schwächer und witziger“. In der GUI: Deck-Tab „Anpassen“ → „Stärke ändern“ mit
-Skala (aktuell vs. Ziel), ▲/▼ „Stärker/Schwächer“, Hausregeln, Stil und „Deck umbauen“.
-Beim Neubau gibt es dieselben Optionen unter „Feinabstimmung“.
+In der GUI: Deck-Tab „Anpassen“ → „Ziel-Stärke“ mit Skala (aktuell vs. Ziel), ▲/▼ „Stärker/Schwächer“,
+Ziel-Bracket, Feinstufe, Hausregeln und Stil. „Ziel speichern“ legt das Ziel im Deck ab; die Deck-Prüfung misst
+deine Karten daran – tauschen tust du sie selbst unter „Karten“ → „Bearbeiten“.
 
 ## Versionen: Verlauf, Diff, Wiederherstellen, Kopieren
 
@@ -102,10 +72,6 @@ Stufe (z. B. „oberes Bracket 3 → unteres Bracket 4“), Preis und Power-Scor
 - **Wiederherstellen:** alte Version wird wieder aktuell – als neue Version, nichts geht verloren
 - **Als neues Deck kopieren:** z. B. eine Bracket-2- und eine Bracket-4-Variante desselben Commanders
 - **Liste kopieren:** Decklist jeder Version für Moxfield/Archidekt
-
-In Claude Code: „Was hat sich seit Version 2 geändert?“, „Mach die letzte Änderung rückgängig“,
-„Kopier das Deck als Bracket-2-Variante“ (Tools `list_deck_versions`, `compare_deck_versions`,
-`restore_deck_version`, `copy_deck`).
 
 ## Proxies drucken: Druckstudio mit MPC Autofill
 
@@ -153,10 +119,6 @@ Einrichtung: `autofill-windows.exe` in den Ordner `tools/` legen (oder Pfad unte
 optional die MPC-Autofill-Server-URL eintragen (die du auf mpcfill.com verwendest) und einen eigenen
 Kartenrücken. Die `order.xml` lässt sich auch auf mpcfill.com importieren.
 
-In Claude Code: „Druck mir das Deck als Proxies“, „Mach ein PDF zum Selbstdrucken“,
-„Schick es an MakePlayingCards“ (Tools `create_proxy_order`, `export_proxy_pdf`,
-`launch_proxy_tool`, `proxy_settings`).
-
 ## Doppelseitige Karten (DFC)
 
 Transform-, Modal-DFC- und ähnliche Karten (z. B. *Delver of Secrets // Insectile Aberration*)
@@ -173,67 +135,54 @@ werden überall mit beiden Seiten behandelt:
 - Kartendatenbanken, die vor dieser Funktion geladen wurden, kennen die Rückseiten noch nicht: Sie werden
   dann automatisch live bei Scryfall nachgeladen, und die GUI empfiehlt ein Update der Datenbank.
 
-## Commander finden, Proxy-Decks, Blacklist
+## Proxy-Decks, Blacklist, Gegner, Tischregeln
 
-- **Commander finden:** Beschreibe frei, was du spielen willst (Farben, Kreaturtypen, Mechaniken,
-  Spielstil). Der Skill `commander-finder` sucht Kandidaten (Scryfall, lokale DB, EDHREC), prüft
-  Oracle-Text, Bracket-Tauglichkeit und Budget und liefert 3–5 Vorschläge mit Begründung.
-- **Proxy-Deck:** Wird das Deck geproxt, ignoriert Claude jedes Budget und wählt die besten
-  Karten für Bracket und Strategie (Bracket-Regeln gelten weiterhin). Das Deck wird als
+- **Proxy-Deck:** Ein geproxtes Deck hat kein Budget (Bracket-Regeln gelten weiterhin). Es wird als
   Proxy-Deck markiert, der echte Kartenwert nur informativ angezeigt.
-- **Budget:** `validate_deck`/`save_deck` warnen, wenn das Deck das Budget überschreitet.
-- **Blacklist:** Karten – und ganze Gruppen –, die nie in ein Deck dürfen. Gepflegt in der GUI, per
-  Claude („setz X auf die Blacklist“, „keine günstigen Tutoren“, Tool `update_blacklist`) oder direkt in
+- **Budget:** Die Deck-Prüfung warnt, wenn das Deck das Budget überschreitet.
+- **Blacklist:** Karten – und ganze Gruppen –, die nie in ein Deck dürfen. Gepflegt in der GUI oder direkt in
   `blacklist.txt` (eine Zeile pro Eintrag, `#` = Kommentar; Datei ist gitignored). Deutsche Namen
   werden in Oracle-Namen übersetzt. Neben Karten gehen **Begriffe** (deutsch oder englisch):
   True Duals, Fetchlands, Shocklands, Günstige Tutoren (≤ 2 Mana), Alle Tutoren, Fast Mana,
   Game Changer, Extra-Züge, Massen-Landzerstörung, Gratis-Zauber, Counterspells, Board Wipes,
   Stax (kuratierte Liste), 2-Karten-Combos (über Commander Spellbook) und „teurer als 20 €“. In der
   Datei stehen sie als `@true-duals`, `@cheap-tutors`, `@price>20` …; alles andere mit `@` davor
-  (`@keine Gedankenkontrolle`) wird als freier Begriff gespeichert, den Claude beachtet, der aber
-  nicht automatisch geprüft wird. Suchergebnisse blenden Blacklist-Karten und Regel-Treffer aus,
+  (`@keine Gedankenkontrolle`) wird als freier Begriff gespeichert – eine Notiz für dich, die nicht
+  automatisch geprüft wird. Suchergebnisse blenden Blacklist-Karten und Regel-Treffer aus,
   die Validierung meldet sie als Fehler („Blacklist-Regel „Günstige Tutoren“: Demonic Tutor“).
 - **Gegnerdecks:** Decks, gegen die du gespielt hast – nur Commander und was dir aufgefallen ist, keine
   Kartenliste (Seite „Gegnerdecks“). Steckbrief mit eigenem Namen, Spieler, geschätztem Bracket, Runde
   (Tischregel) und Merkmalen wie Combo, viele Board Wipes, Flieger, Stax; Beobachtungen mit Datum, auch
   direkt aus „Partie festhalten“. Die Seite zeigt die Bilanz aller deiner Decks gegen das Gegnerdeck, verlinkt
-  die typischen Karten des Commanders auf EDHREC und bereitet „Wie spiele ich dagegen?“ (Fragen) oder
-  „Upgrades gegen dieses Deck“ vor. Umbauen, Bracket ändern, Upgrade-Vorschläge, Stufenplan und Fragen
-  berücksichtigen die Gegner, die zählen: gegen das Deck schon gespielt oder in seiner Runde, sonst die
-  häufigsten. Gespeichert in `decks/.opponents.json`; per Claude: „merk dir: Tims Atraxa gewinnt mit
-  Thassa's Oracle“ (Tools `opponent_decks`, `update_opponent_deck`).
+  die typischen Karten des Commanders auf EDHREC. Gespeichert in `decks/.opponents.json`.
 - **Tischregeln:** benannte Regelsätze für eine Runde („Freitagsrunde“, „Laden-Abend“). Anders als die
-  Blacklist gelten sie nur für Decks, die sie gewählt haben – beim Bauen („Neues Deck“ → Tischregel) oder
-  im Deck unter „Anpassen“; das Deck merkt sich seine Tischregel, Umbauen und Upgrade-Vorschläge halten
-  sie ein. Ein Regelsatz kann enthalten: höchstes Bracket, max. Game Changer, max. Tutoren, Deckbudget
+  Blacklist gelten sie nur für Decks, die sie gewählt haben – im Deck unter „Anpassen“; das Deck merkt sich
+  seine Tischregel. Ein Regelsatz kann enthalten: höchstes Bracket, max. Game Changer, max. Tutoren, Deckbudget
   (zählt auch für Proxy-Decks), „keine Proxies“, verbotene Begriffe wie bei der Blacklist (True Duals,
-  Stax, 2-Karten-Combos, teurer als 10 € …), einzelne verbotene Karten und freie Absprachen, die Claude
-  beachtet. Verstöße sind Fehler der Prüfung, die Deck-Ampel und der Rule-0-Text zeigen sie; gilt
+  Stax, 2-Karten-Combos, teurer als 10 € …), einzelne verbotene Karten und freie Absprachen (als
+  Notiz, nicht geprüft). Verstöße sind Fehler der Prüfung, die Deck-Ampel und der Rule-0-Text zeigen sie; gilt
   zusätzlich ein Power-Profil mit Hausregeln, gewinnt die strengere Regel. Ändert sich ein Regelsatz,
   werden seine Decks neu geprüft. „Welche meiner Decks passen?“ prüft alle Decks gegen eine Runde.
-  Gespeichert in `tablerules.json` (gitignored); per Claude: „leg die Tischregel Freitagsrunde an:
-  höchstens Bracket 3, keine Combos“ (Tools `table_rules`, `update_table_rule`).
+  Gespeichert in `tablerules.json` (gitignored).
 
 ## Datensicherung & Papierkorb
 
 - **Sicherung:** Unter *Einstellungen → Daten & Sicherung* sicherst du mit einem Klick alles, was du angelegt hast –
-  Decks mit Versionen, Partien und Fragen, Sammlung, Gegnerdecks, Tischregeln, Blacklist, Sammelbestellungen,
+  Decks mit Versionen, Partien, Sammlung, Gegnerdecks, Tischregeln, Blacklist, Sammelbestellungen,
   Bildauswahl fürs Drucken und Einstellungen – als eine ZIP-Datei zum Herunterladen. Beim Start der
   GUI entsteht einmal am Tag automatisch eine Sicherung (die letzten 10 bleiben), gespeichert in `backups/`
   (`MTG_BACKUP_DIR`, gitignored). „Sicherung einspielen“ lädt eine ZIP hoch und stellt sie wieder her; vorher wird
-  der aktuelle Stand automatisch gesichert, du kannst also zurück. Ein Lauf von Claude muss dafür beendet sein.
+  der aktuelle Stand automatisch gesichert, du kannst also zurück. Laufende Aufträge müssen dafür beendet sein.
   Ist der PC mit einem Sync-Server verbunden, wird der Stand der Sicherung mit dem der anderen Geräte zusammengeführt;
   dort wird dabei nichts gelöscht.
-- **Papierkorb:** Gelöschte Decks landen samt Versionen, Fragen und Partien im Papierkorb (`decks/.trash/`).
+- **Papierkorb:** Gelöschte Decks landen samt Versionen und Partien im Papierkorb (`decks/.trash/`).
   Direkt nach dem Löschen gibt es „Rückgängig“, später *Einstellungen → Papierkorb* (zurückholen oder endgültig löschen).
 - **Sicheres Speichern:** Alle Dateien werden atomar geschrieben (erst eine temporäre Datei, dann ausgetauscht) und
-  beim Ändern gesperrt – auch wenn die GUI und ein laufender Claude-Auftrag gleichzeitig speichern. Ist eine Datei
+  beim Ändern gesperrt – auch wenn zwei Vorgänge (z. B. GUI und Sync) gleichzeitig speichern. Ist eine Datei
   doch einmal beschädigt, wird sie nie als „leer“ behandelt und überschrieben: Die App legt eine Kopie
   `<name>.beschaedigt-…` daneben und meldet den Fehler; ein beschädigtes Deck erscheint als „(beschädigt)“ in der Liste.
 - **Gleicher Name:** Ein neues Deck überschreibt nie ein anderes Deck mit gleichem Namen (es bekommt z. B.
-  `meren-2`). Nur ein erneutes Speichern desselben Bauvorgangs (gleicher Auftrag, bzw. gleicher Commander innerhalb
-  von 30 Minuten) aktualisiert das eigene Deck. Umbauten behalten Anleitung, Upgrade-Plan, „Gebaut gegen …“ und die
-  Precon-Herkunft.
+  `meren-2`). Änderungen behalten die Precon-Herkunft.
 - **Schutz der lokalen Oberfläche:** Die GUI nimmt nur Anfragen an, die an diesen Rechner gerichtet sind, und lehnt
   ändernde Anfragen von fremden Webseiten ab. Mit `MTG_GUI_HOST=0.0.0.0` (im Netzwerk freigegeben) entfällt die Host-Prüfung.
 
@@ -244,8 +193,9 @@ für rund 6–7 € im Monat. Wie du ihn einrichtest, steht in der [Anleitung](d
 ein Befehl auf dem Server.
 
 - **Lokal zuerst:** Jedes Gerät hat alle Daten und funktioniert ohne Netz. Der Server ist nur die Drehscheibe.
-- **Was abgeglichen wird:** Decks samt Versionen, Partien, Fragen, Chats, Gegnerdecks, Sammlung, Tischregeln,
-  Blacklist, Sammelbestellungen, Druckauswahl, Token-Anzahlen und eigene Bilder.
+- **Was abgeglichen wird:** Decks samt Versionen, Partien, Gegnerdecks, Sammlung, Tischregeln,
+  Blacklist, Sammelbestellungen, Druckauswahl, Token-Anzahlen und eigene Bilder (alte Gespräche aus früheren
+  Versionen bleiben erhalten, werden aber nicht mehr angezeigt).
   Einstellungen, Caches und Druckdateien bleiben pro Gerät.
 - **Verbinden:** *Einstellungen → Sync zwischen Geräten* → Kopplungslink einfügen. Den Link zeigt der Server nach
   der Einrichtung, später jedes verbundene Gerät über „Weiteres Gerät koppeln“ (mit QR-Code; 15 Minuten gültig,
@@ -276,22 +226,17 @@ ein Befehl auf dem Server.
     ein. Bist du raus oder beendest du die Runde, öffnet sich das Partie-Formular vorbelegt; die Partie wird mit dem
     ganzen Verlauf gespeichert. „Beenden“ → „Ohne Ergebnis abbrechen“ verwirft eine Runde, ohne etwas zu speichern.
     Am PC steht die Runde nach dem Abgleich im Deck unter *Partien* („Runde ansehen“).
-  - **Frag Claude:** Im Tab „Claude“ stellst du Fragen zu Decks, Gegnern oder Regeln. Dein PC beantwortet sie mit dem
-    „Frag Claude“ des Deckbuilders, solange er läuft – das Handy selbst braucht keine KI. Es zeigt ehrlich, ob der PC
-    bereit ist und was Claude gerade tut („liest Kartentexte …“). Kommt eine Frage ohne Netz, wartet sie auf dem Handy;
-    ist der PC aus, wartet sie auf dem Server. Am PC lässt sich das unter *Einstellungen → Sync zwischen Geräten →
-    „Fragen vom Handy beantworten“* abschalten. Die Gespräche stehen auch am PC unter „Frag Claude“.
   - **Vorschau:** „Erst mal mit Beispieldaten ansehen“ zeigt die App ohne Kopplung.
 
 ## Desktop-App (Windows)
 
-Dieselbe Oberfläche als eigenes Programm – ohne Python, uv oder Claude Code installieren zu müssen. Fertige Versionen
+Dieselbe Oberfläche als eigenes Programm – ohne Python oder uv installieren zu müssen. Fertige Versionen
 liegen unter [Releases](https://github.com/liehrdot/mtgdeckbuilder/releases) (`MTG Deckbuilder_<Version>_x64-setup.exe`,
 pro Benutzer, ohne Adminrechte); jeder Push baut außerdem einen Test-Installer als Artefakt `mtgdeck-desktop-windows-setup`
 des Workflows „Desktop“.
 
 - **Aufbau:** Eine kleine Tauri-2-Hülle (Rust, WebView2) startet das mitgelieferte Backend (`mtgdeck-backend.exe`,
-  ein PyInstaller-Ordner mit der Claude-CLI des Agent-SDK, den Skills und den statischen Dateien) auf einem freien
+  ein PyInstaller-Ordner mit den statischen Dateien) auf einem freien
   Port mit zufälligem Token und zeigt es im Fenster. Stirbt das Backend, startet die Hülle es neu; klappt das
   fünfmal nicht, zeigt die Startseite das Protokoll und bietet einen neuen Versuch an.
 - **Daten:** `%APPDATA%\MTG Deckbuilder` (Decks, Sammlung, Blacklist, Tischregeln, Sicherungen, Sync-Zustand),
@@ -299,14 +244,11 @@ des Workflows „Desktop“.
   Protokoll `%APPDATA%\MTG Deckbuilder\logs\backend.log`.
   Bestehende Daten aus einem Projektordner kommen per Sync (siehe oben) oder über Einstellungen → Sicherung
   hochladen in die App.
-- **Tray:** Schließen versteckt das Fenster, die App läuft weiter (Sync, Fragen vom Handy). Rechtsklick auf das
+- **Tray:** Schließen versteckt das Fenster, die App läuft weiter (Sync). Rechtsklick auf das
   Symbol neben der Uhr: Öffnen, Datenordner öffnen, Beim Anmelden starten, Beenden. Beim Zeigen auf das Symbol
-  steht der Zustand (laufende Aufträge, letzter Sync). Ist das Fenster versteckt, meldet die App „Deck fertig“,
-  „Antwort von Claude“, „Neu von deinen anderen Geräten“ und „Frage vom Handy beantwortet“ als Benachrichtigung.
+  steht der Zustand (laufende Aufträge, letzter Sync). Ist das Fenster versteckt, meldet die App „Neu von deinen anderen Geräten“
+  als Benachrichtigung.
   Einstellungen → **Desktop-App**: Autostart, Benachrichtigungen an/aus, Datenordner und Protokoll öffnen.
-- **Claude:** Die CLI steckt im Paket. Einstellungen → KI-Funktionen zeigt, ob sie angemeldet ist; **„Bei Claude
-  anmelden“** startet die Anmeldung im Terminal der App (der Browser öffnet sich zum Bestätigen). Eine bestehende
-  Anmeldung von Claude Code auf demselben Rechner (`%USERPROFILE%\.claude`) gilt auch.
 - **Updates:** Die App prüft kurz nach dem Start und einmal täglich die Releases. Eine neue Version meldet sie mit
   einem Hinweis; Einstellungen → Desktop-App zeigt sie und installiert sie auf Knopfdruck (die App beendet erst ihr
   Backend, dann läuft der Installer im Hintergrund durch und startet sie neu). Updates sind signiert – der öffentliche Schlüssel steckt in
@@ -328,116 +270,59 @@ uv run mtg-gui              # → http://127.0.0.1:8765
 
 Aufbau (bewusst schlicht: eine Hauptaktion pro Seite, Selteneres eingeklappt):
 
-**Ohne KI nutzbar:** Claude Code braucht nur, wer Decks bauen, umbauen oder bewerten lässt (Deck bauen lassen,
-Commander vorschlagen, Gegen meine Runde bauen, Anpassen, Upgrade-Vorschläge/-Plan, Anleitung, Fragen, „Frag
-Claude“). Alles andere läuft ohne: Deck importieren (Link, Liste, Starterdeck) oder unter „Ich habe schon ein Deck“
-→ **„Selbst zusammenstellen“** ein leeres Deck mit Commander anlegen und Karten im Bearbeiten-Modus hinzufügen
-(auch per **Drag & Drop von scryfall.com**: Kartenbild oder -link aus dem Browserfenster daneben in die App ziehen –
-im offenen Deck kommt die Karte in die Liste, sonst wird sie Commander eines neuen leeren Decks),
-Deck-Check mit Kartenvorschlägen, Testhand, Rule-0-Text, Drucken samt eigener Bilder und Tokens, Sammlung,
-Sammelbestellungen, Partien, Gegnerdecks, Tischregeln, Blacklist, Glossar, Sicherung. Die App erkennt, ob Claude Code installiert
-ist (und merkt sich, wenn ein Lauf an fehlender Anmeldung scheitert); unter Einstellungen → „KI-Funktionen“ lassen
-sie sich auch bewusst ausschalten. KI-Knöpfe sind dann gesperrt und ein Hinweis sagt, was stattdessen geht.
-
-
-- **Seitenleiste:** „+ Neues Deck“, **Frag Claude** (Chat mit der ganzen App, siehe unten), deine Decks (ab 8 Decks mit Filter; ein roter Punkt markiert nicht
+- **Seitenleiste:** „+ Neues Deck“, deine Decks (ab 8 Decks mit Filter; ein roter Punkt markiert nicht
   legale), unten Meine Sammlung und Sammelbestellungen sowie zwei Gruppen: **Meine Runde** (Gegnerdecks, Tischregeln, Blacklist)
-  und **Hilfe** (Glossar, Einstellungen). Läuft ein Auftrag, zeigt ein Hinweis mit Spinner oben
-  in der Leiste, woran Claude gerade arbeitet – ein Klick führt zurück. Auf dem Handy klappt die Leiste
+  und **Hilfe** (Glossar, Einstellungen). Läuft ein Auftrag (z. B. Kartendatenbank laden),
+  zeigt ein Hinweis mit Spinner oben in der Leiste, woran die App gerade arbeitet – ein Klick führt zurück. Auf dem Handy klappt die Leiste
   hinter ☰ weg.
 - **Neues Deck** – vier Einstiege:
-  - **Ich habe einen Commander:** ein Formular in vier Schritten: 1 Commander (Autovervollständigung,
-    Kartenbild, optional Partner/Background) · 2 Stärke (Bracket 1–5 mit Erklärung, „Feinabstimmung“ für
-    Stufe, Hausregeln, Stil) · 3 Budget oder Proxy-Deck · 4 Wünsche. Das KI-Modell steckt unter „Erweitert“.
-  - **Commander vorschlagen lassen** – ein kurzes Quiz: was dir Spaß macht (große Kreaturen, Tokens,
-    Friedhof …), Lieblingsfarben mit ihrer Bedeutung, deine Erfahrung, Lieblingsthemen, optional Freitext.
-    Die Vorschläge zeigen „Warum passt der zu dir?“ und wie leicht der Commander zu spielen ist; Einsteiger
-    bekommen einfache Commander bevorzugt. Dann „Übernehmen“ oder direkt „Deck bauen“.
-  - **Ich habe schon ein Deck:** per **Link** (Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats,
-    EDHREC-Durchschnittsdeck), als **eingefügte Liste** (Moxfield-/Arena-/Text-Export, auch deutsche
-    Namen) oder als **Starterdeck** (Precons von MTGJSON, Suche nach Name, Set-Kürzel, Jahr). Vor dem Import
-    zeigt eine Vorschau Name, Quelle, Kartenzahl und nicht erkannte Karten; markiert die Seite den Commander
-    nicht, wählst du ihn aus den legendären Karten der Liste. Das Bracket wird geschätzt oder gewählt, die
-    Kategorien der Quelle werden übernommen, wo sie passen. Moxfield blockt fremde Zugriffe oft – dann
-    „Export“ → „Copy Plain Text“ und die Liste einfügen.
-  - **Gegen meine Runde bauen:** Claude sieht sich deine eigenen Decks (Stufe, Power, Bilanz, gegen wen sie
-    verloren haben) und deine Gegnerdecks an (Merkmale, Notizen, Bilanz) und baut das stärkste Deck dagegen –
-    „am stärksten“ heißt die besten Chancen gegen genau diese Gegner, immer innerhalb von Bracket, Feinstufe,
-    Tischregel, Budget und Blacklist. Du wählst die Gegnerdecks (eine Tischregel wählt ihre Runde vor), gibst
-    optional einen Commander vor (sonst sucht Claude einen, den du noch nicht spielst) und hast dieselben
-    Optionen wie beim normalen Bau. Das Deck merkt sich, gegen wen es gebaut wurde („Gebaut gegen …“), und
-    spätere Upgrades achten besonders auf diese Gegner. In Claude Code genügt: „Bau mir das stärkste Deck gegen
-    meine Runde, Bracket 3“.
-    Standard ist **„3–5 Decks vorschlagen“**: Claude analysiert die Runde und schlägt 3–5 deutlich verschiedene
-    Decks vor – je mit Begründung, Siegplan, Spielplan pro Gegner, Schlüsselkarten, Schwäche und Einordnung in
-    Bracket/Tischregel/Budget. Dieser Lauf nutzt **immer Opus 5.5 mit extra hohem Denkaufwand** (`xhigh`), optional
-    mit **Web-Recherche** (aktuelle Meta-Artikel, EDHREC, Turnier- und Decklisten; Quellen werden angezeigt). Die
-    letzten Vorschläge bleiben gespeichert (`decks/.meta-suggestions.json`); „Dieses Deck bauen“ startet den Bau mit
-    dem gewählten Commander und denselben Optionen, „Direkt ein Deck bauen“ überspringt die Vorschläge.
-- **Frag Claude** – ein Chat mit der ganzen App: „Was ist mein stärkstes Deck und warum?“, „Welches Deck
-  hat das meiste Potential?“, „Wie würdest du welches Deck umbauen?“, „Welches Deck passt zu meiner
-  Runde?“, „Welche Karten fehlen mir in mehreren Decks?“ – als Freitext oder per Vorschlag. Fragen zu
-  **einem** Deck (Strategie, Mulligan, „zu stark für die Runde?“, Matchup gegen Atraxa, Regelfragen) stellst
-  du im Deck über **„Claude fragen“**: Das Gespräch bekommt einen Deckbezug (Chip über dem Eingabefeld, auch
-  für Nachfragen), Claude lädt das Deck zuerst und kennt seine Tischregel und Gegner. Claude bekommt
-  eine Übersicht über alle Decks (Stufe, Power, legal, Preis/Budget, Tischregel, Deck-Check, Bilanz mit
-  häufigen Problemen und Gegnern, fehlende Sammlungskarten, offene Upgrade-Plan-Stufen), deine Gegnerdecks,
-  Tischregeln und die Sammlung und holt sich Details bei Bedarf selbst. Er **ändert nichts** – Vorschläge
-  setzt du im Deck unter „Anpassen“ um. Decks in Antworten sind Links (plus „… öffnen“-Knöpfe), Kartennamen
-  zeigen beim Hovern das Bild. Gespräche bleiben gespeichert (`decks/.chats/`, Teil der Sicherung), lassen
-  sich umbenennen, kopieren und löschen; Anschlussfragen kennen den Verlauf. „Gründlich nachdenken“ nutzt
-  Opus 5.5 mit extra hohem Denkaufwand. Läuft eine Antwort, kannst du woanders weiterarbeiten – ein Hinweis
-  meldet, wenn sie da ist.
-- **Während Claude arbeitet:** Status in Klartext („Claude prüft EDHREC-Empfehlungen …“), Laufzeit,
-  Abbrechen; das technische Protokoll steckt unter „Details“. Ist das Deck fertig, öffnet es sich. Ein Auftrag
-  endet immer sichtbar – auch wenn sein letzter Schritt scheitert oder die App inzwischen neu gestartet wurde
-  („Die Verbindung zum Auftrag ist weg …“); kein Lade-Kreisel dreht ewig. Ist Scryfall, EDHREC & Co. nicht
-  erreichbar, steht da, welcher Dienst und was zu tun ist (statt „Internal Server Error“).
-- **Deck-Ansicht** mit Kopfzeile (Commander, Stufe, legal/nicht legal, Preis, Version, Knopf „Claude fragen“) und sieben Tabs –
+  - **Selbst zusammenstellen** (Standard): ein leeres Deck mit Commander (optional Partner/Background), Name und
+    Bracket anlegen und die Karten im Bearbeiten-Modus hinzufügen – auch per **Drag & Drop von scryfall.com**:
+    Kartenbild oder -link aus dem Browserfenster daneben in die App ziehen. Im offenen Deck kommt die Karte in die
+    Liste, sonst wird sie Commander eines neuen leeren Decks.
+  - per **Link** (Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats, EDHREC-Durchschnittsdeck),
+  - als **eingefügte Liste** (Moxfield-/Arena-/Text-Export, auch deutsche Namen),
+  - als **Starterdeck** (Precons von MTGJSON, Suche nach Name, Set-Kürzel, Jahr).
+
+  Vor dem Import zeigt eine Vorschau Name, Quelle, Kartenzahl und nicht erkannte Karten; markiert die Seite den
+  Commander nicht, wählst du ihn aus den legendären Karten der Liste. Das Bracket wird geschätzt oder gewählt, die
+  Kategorien der Quelle werden übernommen, wo sie passen. Moxfield blockt fremde Zugriffe oft – dann
+  „Export“ → „Copy Plain Text“ und die Liste einfügen.
+- **Laufende Aufträge** (Kartendatenbank, Druckdateien …): Status in Klartext, Laufzeit, Abbrechen; das technische
+  Protokoll steckt unter „Details“. Ein Auftrag endet immer sichtbar – auch wenn sein letzter Schritt scheitert oder
+  die App inzwischen neu gestartet wurde („Die Verbindung zum Auftrag ist weg …“); kein Lade-Kreisel dreht ewig. Ist
+  Scryfall, EDHREC & Co. nicht erreichbar, steht da, welcher Dienst und was zu tun ist (statt „Internal Server Error“).
+- **Deck-Ansicht** mit Kopfzeile (Commander, Stufe, legal/nicht legal, Preis, Version) und sieben Tabs –
   die Adresse merkt sich den Tab, der Zurück-Button des Browsers funktioniert:
   - **Karten:** gruppiert nach Kategorie, Typ, Manawert, Farbe oder Besitz, sortiert nach Name, Manawert
     oder Preis, als Liste (Bild beim Hovern) oder Bildraster; daneben der **Deck-Check** (Prüfung und
     Ampel-Bereiche in einem Kasten), Statistik,
     Sammlungs-Abgleich und „Tokens & Marker“. Klick auf eine Karte zeigt sie groß – bei doppelseitigen Karten
     beide Seiten – mit dem **Kartentext auf Deutsch** (gedruckter Text der neuesten deutschen Ausgabe,
-    umschaltbar auf den englischen Oracle-Text), Manasymbolen und markierten Schlüsselwörtern samt Erklärung;
-    „Erklär mir die Karte“ fragt Claude unter „Frag Claude“, was sie tut und wann du sie spielst.
+    umschaltbar auf den englischen Oracle-Text), Manasymbolen und markierten Schlüsselwörtern samt Erklärung.
     **Deck-Check (Ampel):** Länder (Richtwert abhängig von Kurve und Ramp), Ramp, Kartenzug, Removal, Board
     Wipes, Manakurve und Siegbedingungen – je grün/gelb/rot mit „Warum wichtig?“. „Karten vorschlagen“ zeigt
-    beliebte Karten dieser Rolle in deinen Farben (ohne KI) und merkt sie im Bearbeiten-Modus vor;
-    „Upgrades mit KI“ trägt den passenden Fokus bei den Upgrade-Vorschlägen ein.
-    **Bearbeiten** (ohne Claude): Karten hinzufügen, Anzahl ±, entfernen, Kategorie ändern und über ⇄
+    beliebte Karten dieser Rolle in deinen Farben (aus EDHREC- und Scryfall-Daten) und merkt sie im
+    Bearbeiten-Modus vor.
+    **Bearbeiten:** Karten hinzufügen, Anzahl ±, entfernen, Kategorie ändern und über ⇄
     „Ähnliche Karten“ (gleiche Rolle, passende Farben) tauschen – gespeichert wird alles zusammen als neue,
     geprüfte Version.
-  - **Anleitung:** der **Rule-0-Text** für die Runde (Stufe, Spielweise, Tempo, Game Changer, Combos,
-    Tutoren, Extra-Züge, Massen-Landzerstörung, Proxys, Hausregeln – ohne KI aus der Prüfung; kopieren oder
-    „Am Tisch zeigen“ im Vollbild) und eine **Deck-Anleitung** von Claude: Spielplan, früh/mitte/spät,
-    Starthand behalten?, Schlüsselkarten, Siegwege, worauf achten, Tipps. Sie wird im Deck gespeichert
-    (mit der Version, für die sie gilt). „Drucken / als PDF“ ergibt einen einseitigen Spickzettel.
+  - **Rule 0:** der **Rule-0-Text** für die Runde (Stufe, Spielweise, Tempo, Game Changer, Combos,
+    Tutoren, Extra-Züge, Massen-Landzerstörung, Proxys, Hausregeln – automatisch aus der Prüfung; kopieren oder
+    „Am Tisch zeigen“ im Vollbild). „Drucken / als PDF“ ergibt eine Seite zum Mitnehmen.
   - **Testen:** Starthand ziehen, London-Mulligan (der erste ist in Commander frei), Zug für Zug nachziehen,
     auf dem Play oder Draw; dazu exakte Wahrscheinlichkeiten: Länder in der Starthand, Landdrops bis Zug 5,
     Ramp bis Zug 2, Kartenzug bis Zug 3, Interaktion bis Zug 4.
-  - **Anpassen:** oben die Tischregel, darunter eine Frage „Was willst du ändern?“ mit vier Antworten – es
-    ist immer nur der gewählte Bereich offen (die Wahl bleibt gespeichert; ein Deck mit offenem Upgrade-Plan
-    öffnet direkt den Plan): „Mit eigenen Worten ändern“ (Freitext + Schnellwahl), **Upgrade-Vorschläge** (Budget und
-    Fokus angeben → Claude liefert Tausche mit Preis und Grund, Karten aus der Sammlung zählen als kostenlos;
-    ankreuzen und übernehmen, ohne weiteren KI-Lauf), der **Upgrade-Plan in Stufen** (z. B. 20 € · 50 € · 100 €
-    insgesamt; jede Stufe mit Thema, Tauschen und Kosten, Stufe für Stufe übernehmen – ideal für
-    Starterdecks) und „Stärke ändern“ (Retune).
-  - **Fragen:** Fragen in natürlicher Sprache – Strategie, Mulligan, ist es zu stark für meine Runde, wie
-    schlägt es sich gegen Commander XY (Claude holt sich dessen typisches Deck von EDHREC), Schwächen,
-    warum ist Karte X drin. Anschlussfragen („und gegen Kinnan?“) kennen den bisherigen Verlauf.
-    Claude darf dabei nur lesen (kein Speichern); Fragen und Antworten liegen pro Deck in
-    `decks/.questions/<slug>.json`, Kartennamen in Antworten zeigen beim Hovern das Bild.
+  - **Anpassen:** oben die Tischregel, darunter die **Ziel-Stärke** (siehe
+    [Power-Feinabstimmung](#power-feinabstimmung-ziel-stärke)): Ziel-Bracket, Feinstufe und Hausregeln wählen,
+    „Ziel speichern“ – die Prüfung misst die Karten daran, tauschen tust du sie selbst.
   - **Partien:** nach dem Spiel festhalten – Ergebnis, Gegner-Commander, letzter Zug, was schiefging
     (Schnellwahl wie „zu wenige Länder“, „kein Weg zu gewinnen“), beste Karte, Notiz. Die Bilanz zeigt
     Siegquote, Ø Zug, häufigste Probleme, Ergebnis pro Version, beste Karten und Gegner.
     Partien aus dem Runden-Helfer des Handys haben „Runde ansehen“: Lebenskurve, Commander-Schaden und was in
     jedem Zug passiert ist. Die Bilanz zeigt dazu, wer dir über alle Runden den meisten Schaden gemacht hat und in
     welchem eigenen Zug du im Schnitt am meisten Leben verlierst.
-    „Aus den Partien lernen“ trägt die häufigsten Probleme als Fokus für Upgrade-Vorschläge ein (mit Runden auch
-    Antworten auf den stärksten Gegner und „früher verteidigen“); Fragen und
-    Upgrades kennen die Partien samt Runden auch (`deck_games`). Gespeichert in `decks/.games/<slug>.json`.
+    Gespeichert in `decks/.games/<slug>.json`.
     Zu jedem Gegner gibt es ein Feld „Aufgefallen“; bekannte Gegnerdecks wählst du per Klick aus,
     neue Commander werden automatisch als Gegnerdeck gemerkt (abschaltbar).
   - **Verlauf:** Versionen vergleichen, wiederherstellen, als neues Deck kopieren. Darunter (und im ⋯-Menü)
@@ -470,7 +355,6 @@ sie sich auch bewusst ausschalten. KI-Knöpfe sind dann gesperrt und ein Hinweis
   importieren“, „Deck per Link importieren“ oder „Partie festhalten“.
 - Hell/Dunkel folgt dem Betriebssystem; bedienbar mit Tastatur (Pfeiltasten in den Tabs, Esc schließt
   Dialoge und Menüs).
-- Die GUI nutzt deine Claude-Code-Anmeldung; Kosten fallen wie bei einer normalen Claude-Code-Sitzung an.
 
 ## Sammelbestellungen
 
@@ -486,12 +370,10 @@ anderen Deck und 50 Treasure-Tokens, zusammen in **einer** MakePlayingCards-Best
 - **Aus der Kartenansicht:** Klick auf eine Karte (oder einen Token unter „Tokens & Marker“) → „Zur
   Sammelbestellung“ neben dem Scryfall-Link, mit Anzahl.
 - **Umbau bestellen:** im Deck „Mit anderem Deck vergleichen“ → den Unterschied zum alten Deck hinzufügen.
-- **Von überall:** Upgrade-Vorschläge („Zur Sammelbestellung“ – drucken, ohne sie schon ins Deck zu übernehmen),
-  eine Stufe des Upgrade-Plans, das ⋯-Menü eines Decks und Claude (`update_print_order`).
-- **Nach jedem Umbau** eines Decks (Claude überarbeitet oder ändert die Stärke, manuelles Bearbeiten, Upgrades
-  oder eine Plan-Stufe übernommen) fragt die App, ob die **neu hinzugekommenen Karten** in eine Sammelbestellung
+- **Von überall:** auch über das ⋯-Menü eines Decks.
+- **Nach jedem Umbau** eines Decks (Karten im Bearbeiten-Modus geändert) fragt die App, ob die **neu hinzugekommenen Karten** in eine Sammelbestellung
   sollen – auf Wunsch nur die, die in der Sammlung fehlen.
-- **Inhalt** gruppiert nach Herkunft (Deck, Upgrades, Liste, Tokens …), Anzahl änderbar, einzelne Positionen oder
+- **Inhalt** gruppiert nach Herkunft (Deck, Liste, Tokens …), Anzahl änderbar, einzelne Positionen oder
   ganze Gruppen entfernen; oben stehen Karten, Tokens, Druckplätze und die MPC-Staffel (18, 36, 55, 72 …).
 - **Als Moxfield-Liste:** „Als Moxfield-Liste kopieren“ oder „.txt herunterladen“ – alle Karten zusammengezählt
   („3 Sol Ring“), passend für den Import bei Moxfield, Archidekt oder ManaBox. Tokens sind nicht dabei
@@ -513,8 +395,6 @@ Die Seite „Meine Sammlung“ merkt sich, welche Karten du hast (`collection.js
 - **Im Deck:** ✓ = hast du, P = als Proxy, „2/3“ = teilweise; Panel „Sammlung“ mit „X von 100 vorhanden“,
   Preis der fehlenden Karten, **Einkaufsliste** (für Cardmarket-Wants) und Warnung, wenn mehrere Decks
   dieselbe Karte brauchen, du aber zu wenige hast. Basic Lands zählen als vorhanden.
-- **Beim Bauen:** „Karten aus meiner Sammlung bevorzugen“ – Claude nimmt passende Karten aus deiner
-  Sammlung, beim Budget zählen nur fehlende.
 - **Beim Drucken:** „Nur fehlende Karten“ druckt nur, was dir fehlt; danach trägt „Zur Sammlung
   hinzufügen“ die gedruckten Proxies samt Artwork ein.
 
@@ -537,7 +417,7 @@ Alle Anfragen werden 24 h auf der Platte gecacht (`~/.cache/mtgdeck`).
 
 ### Lokale Kartendatenbank (Scryfall Bulk Data)
 
-`update_card_database` (bzw. der GUI-Button) lädt die Scryfall-Bulk-Files und baut daraus
+Der Button unter „Einstellungen → Kartendatenbank“ lädt die Scryfall-Bulk-Files und baut daraus
 `~/.cache/mtgdeck/cards.sqlite`:
 
 - **All Cards** (≈ 375 MB komprimiert, Standard): wird zu einer Zeile pro Oracle-ID zusammengefasst.
@@ -545,41 +425,8 @@ Alle Anfragen werden 24 h auf der Platte gecacht (`~/.cache/mtgdeck`).
   **günstigste Papier-Druck** – gut für Budget-Decks. Preise sind bis zu ~24 h alt (Schätzwert).
 - **Oracle Tags** (Scryfall Tagger): Kartenrollen wie `ramp`, `draw`, `removal`, `sweeper`, `tutor`
   inkl. Tag-Hierarchie – deutlich bessere Rollenerkennung als Textmuster.
-- Aktualisierung höchstens wöchentlich (Spieldaten ändern sich selten); `force` erzwingt es.
+- Aktualisierung höchstens wöchentlich (Spieldaten ändern sich selten), außer du erzwingst sie.
 - Ohne lokale DB funktioniert alles weiterhin über die Live-API (langsamer, nur englische Namen).
-
-## MCP-Tools (Server `mtg`)
-
-| Tool | Zweck |
-|---|---|
-| `search_cards` | Live-Suche mit Scryfall-Syntax (`id<=bg otag:ramp -is:gamechanger eur<3`) |
-| `local_card_search` | schnelle Offline-Suche: Farbidentität, Tagger-Tags, Text, Typ, Preis, ohne Game Changer |
-| `get_cards` | Kartendaten zu Namen (auch deutsch) |
-| `find_commanders` | Commander-Suche |
-| `edhrec_recommendations` / `edhrec_average_deck` | EDHREC-Daten (optional Bracket, Thema, Budget) |
-| `find_combos` | Commander Spellbook: Combos im Deck / fehlt eine Karte |
-| `bracket_rules` / `game_changers` | Bracket-Regeln, aktuelle Game-Changer-Liste |
-| `validate_deck` | 100 Karten, Singleton, Farbidentität, Bannliste, Blacklist, Budget, Rollen-Richtwerte, Bracket-Prüfung, Power-Profil & Power-Score |
-| `save_deck` / `load_deck` / `list_decks` / `export_deck` | Decks speichern, laden, exportieren |
-| `edit_deck` / `similar_cards` | gezielte Tausche ohne die ganze Liste neu zu schicken; Ersatzkarten für eine Karte |
-| `collection_search` / `collection_status` / `update_collection` | Sammlung durchsuchen, Deck mit Sammlung abgleichen, Karten eintragen |
-| `import_deck` | Deck-Link importieren (Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats, EDHREC) |
-| `search_precons` / `import_precon` | Starterdecks (Precons) von MTGJSON suchen / als Deck speichern |
-| `print_orders` / `update_print_order` | Sammelbestellungen lesen / Karten, Tokens oder ein Deck hinzufügen |
-| `compare_decks` | zwei Decks vergleichen (z. B. Umbau gegen altes Deck): neue, frei werdende und gemeinsame Karten, mit Sammlungs-Abgleich; `update_print_order(from_deck=, compare_with=)` bestellt den Unterschied |
-| `deck_games` | festgehaltene Partien eines Decks mit Bilanz und häufigsten Problemen |
-| `app_overview` | alles auf einen Blick: alle Decks mit Stufe, Power, Legalität, Preis, Deck-Check, Bilanz, fehlenden Karten, dazu Gegnerdecks, Tischregeln, Sammlung |
-| `opponent_decks` / `update_opponent_deck` | Gegnerdecks mit Merkmalen, Beobachtungen und Bilanz lesen / anlegen, Beobachtung notieren, löschen |
-| `table_rules` / `update_table_rule` | Tischregeln lesen / anlegen, ändern, löschen; `validate_deck` und `save_deck` nehmen `table_rule` |
-| `get_blacklist` / `update_blacklist` | Blacklist lesen / Karten und Begriffe (True Duals, Günstige Tutoren, teurer als 20 € …) hinzufügen oder entfernen |
-| `list_deck_versions` / `compare_deck_versions` | Versionsverlauf, Diff zwischen Versionen |
-| `restore_deck_version` / `copy_deck` | alte Version wiederherstellen, Deck (oder alte Version) kopieren |
-| `create_proxy_order` / `export_proxy_pdf` | Proxy-Druckdateien (MPC-Autofill-XML + Bilder, optional mit Tokens: `tokens` = Standard-Anzahl, `token_counts` = Anzahl pro Token wie `{"Human": 10}`), PDF zum Selbstdrucken |
-| `launch_proxy_tool` / `proxy_settings` | MPC-Autofill-Programm starten, Proxy-Einstellungen |
-| `card_db_status` / `update_card_database` | lokale Kartendatenbank |
-
-Der Server lässt sich auch in anderen MCP-Clients nutzen (z. B. Claude Desktop):
-`{"command": "uv", "args": ["run", "--directory", "/pfad/zu/mtgdeckbuilder", "mtg-mcp"]}`.
 
 ## Konfiguration (Umgebungsvariablen)
 
@@ -603,13 +450,12 @@ Der Server lässt sich auch in anderen MCP-Clients nutzen (z. B. Claude Desktop)
 | `MTG_SYNC_DATA` / `MTG_SYNC_PUBLIC_URL` / `MTG_SYNC_HOST` / `MTG_SYNC_PORT` | `./sync-data` / – / `0.0.0.0` / `8080` | nur der Sync-Server (`mtg-sync-server`) |
 | `MTG_AUTOFILL_PATH` / `MTG_MPCFILL_SERVER` / `MTG_CARDBACK` / `MTG_UPSCALER_PATH` | – | überschreiben die Proxy-Einstellungen (`mtgdeck.settings.json`) |
 | `MTG_GUI_HOST` / `MTG_GUI_PORT` | `127.0.0.1` / `8765` | GUI-Adresse |
-| `MTG_MAX_TURNS` | `120` | max. Agent-Schritte pro GUI-Auftrag |
 
 ## Grenzen
 
-- EDHREC hat keine offizielle API; ändert sich das JSON-Format, liefern die EDHREC-Tools Fehler, der Rest funktioniert weiter.
+- EDHREC hat keine offizielle API; ändert sich das JSON-Format, liefern die EDHREC-Funktionen Fehler, der Rest funktioniert weiter.
 - Die Bracket-Prüfung deckt die harten Regeln ab (Game Changer, MLD, Extra Turns, 2-Karten-Combos).
-  „Wie schnell/konsistent ist das Deck?“ bleibt eine Einschätzung – Claude begründet sie in der Deckbeschreibung.
+  „Wie schnell/konsistent ist das Deck?“ bleibt eine Einschätzung (Power-Score).
 - Die Rollen-Zählung (Ramp, Draw, Removal …) ist heuristisch (Tagger-Tags bzw. Textmuster) – das gilt auch
   für den Deck-Check.
 - Moxfield, MTGGoldfish, TappedOut, Deckstats und MTGJSON bieten keine offiziell dokumentierte Deck-API;
@@ -624,5 +470,4 @@ uv sync --all-extras
 uv run pytest          # läuft komplett offline (HTTP wird gemockt)
 ```
 
-Struktur: `src/mtgdeck/` (Python-Paket), `.claude/skills/` (Skills `commander-deckbuilder`, `commander-finder`),
-`.mcp.json` (MCP-Registrierung), `tests/`.
+Struktur: `src/mtgdeck/` (Python-Paket), `desktop/` (Desktop-App), `deploy/sync/` (Sync-Server), `tests/`.

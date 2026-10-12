@@ -1,9 +1,8 @@
 """My collection: import formats, merging, artwork/proxy/foil, comparison with decks."""
 
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 
 from mtgdeck import collection, storage
-from mtgdeck.mcp_server import mcp
 
 MANABOX = """Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,Purchase price,Misprint,Altered,Condition,Language
 Sol Ring,c21,Commander 2021,263,normal,uncommon,2,1,a1b2-sol,1.00,false,false,near_mint,en
@@ -75,7 +74,7 @@ async def test_csv_roundtrip_and_summary():
 
 async def test_deck_ownership_missing_and_shared():
     for name in ("Own A", "Own B"):
-        await mcp.call_tool("save_deck", {"name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
+        await save_deck(**{"name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
             "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
     await collection.add([{"name": "Sol Ring"}, {"name": "Cultivate", "proxy": True}, {"name": "Filler 0", "qty": 2}])
     deck = storage.load("own-a")
@@ -104,7 +103,7 @@ async def test_collection_routes_print_only_missing_and_add_printed():
     from mtgdeck import proxy
     from mtgdeck.gui.app import app
 
-    await mcp.call_tool("save_deck", {"name": "Print Me", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
+    await save_deck(**{"name": "Print Me", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
     client = TestClient(app)
     assert client.get("/api/collection").json()["summary"]["cards"] == 0
@@ -134,19 +133,6 @@ async def test_collection_routes_print_only_missing_and_add_printed():
 
     assert client.delete("/api/collection").status_code == 400
     assert client.delete("/api/collection", params={"confirm": True}).json()["deleted"] > 0
-
-
-async def test_collection_mcp_tools():
-    import json
-
-    r = json.loads((await mcp.call_tool("update_collection", {"lines": "2 Sol Ring\n1 Cultivate", "proxy": True})).content[0].text)
-    assert r["added"] == 3
-    found = json.loads((await mcp.call_tool("collection_search", {"color_identity": "G"})).content[0].text)
-    assert {c["name"] for c in found["cards"]} == {"Sol Ring", "Cultivate"} and found["cards"][0]["proxy"] >= 1
-    await mcp.call_tool("save_deck", {"name": "Status", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
-        "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
-    st = json.loads((await mcp.call_tool("collection_status", {"slug": "status"})).content[0].text)
-    assert st["have_proxy"] == 2 and "cards" not in st
 
 
 async def test_prints_are_paginated_not_capped():

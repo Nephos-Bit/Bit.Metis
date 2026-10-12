@@ -1,5 +1,5 @@
 """The backend as a program: data folders from one root, the launcher's arguments, the access token of the desktop
-shell, the health route and the frozen-aware MCP command."""
+shell and the health route."""
 
 import os
 import socket
@@ -19,20 +19,16 @@ from mtgdeck.gui import app as gui
 def test_paths_follow_mtg_home_and_the_frozen_flag(monkeypatch, tmp_path):
     monkeypatch.delenv("MTG_HOME", raising=False)
     monkeypatch.delenv("MTG_CACHE_HOME", raising=False)
-    monkeypatch.delenv("MTG_AGENT_ROOT", raising=False)
-    assert paths.home() == paths.REPO_ROOT and paths.agent_root() == paths.REPO_ROOT  # a checkout: as before
+    assert paths.home() == paths.REPO_ROOT  # a checkout: as before
     monkeypatch.setenv("MTG_HOME", str(tmp_path / "daten"))
     monkeypatch.setenv("MTG_CACHE_HOME", str(tmp_path / "cache"))
     assert paths.home() == tmp_path / "daten" and paths.cache_home() == tmp_path / "cache"
     monkeypatch.delenv("MTG_HOME")
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "bundle"), raising=False)
-    assert paths.frozen() and paths.agent_root() == tmp_path / "bundle" / "agent"
+    assert paths.frozen()
     home = paths.home()
     assert home != paths.REPO_ROOT and home.name in ("MTG Deckbuilder", "mtgdeck")  # the platform's app-data folder
-    assert gui._mcp_command() == [sys.executable, "mcp"]
-    monkeypatch.setattr(sys, "frozen", False, raising=False)
-    assert gui._mcp_command() == [sys.executable, "-m", "mtgdeck.mcp_server"]
 
 
 def test_launcher_arguments_become_environment(monkeypatch, tmp_path):
@@ -43,7 +39,7 @@ def test_launcher_arguments_become_environment(monkeypatch, tmp_path):
     assert len(os.environ["MTG_GUI_TOKEN"]) >= 24
     launch.apply(launch._parser().parse_args(["--token", "geheim"]))
     assert os.environ["MTG_GUI_TOKEN"] == "geheim"
-    assert launch._parser().parse_args(["mcp"]).command == "mcp" and launch._parser().parse_args([]).command == "serve"
+    assert launch._parser().parse_args([]).command == "serve"
 
 
 def test_token_guards_everything_but_health_and_static(monkeypatch):

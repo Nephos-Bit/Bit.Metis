@@ -15,7 +15,7 @@ import pytest
 from conftest import deck_lines
 from fastapi.testclient import TestClient
 
-from mtgdeck import backup, collection, deckedit, jsonstore, mcp_server, storage, tablerules
+from mtgdeck import backup, collection, deckedit, jsonstore, storage, tablerules
 from mtgdeck.gui import app as gui
 
 MEREN = ["Meren of Clan Nel Toth"]
@@ -25,10 +25,6 @@ def _deck(name: str = "Safe Deck", **extra) -> str:
     storage.save({"name": name, "commanders": MEREN, "bracket": 3, "currency": "eur",
                   "cards": [{"name": ln.split(" ", 1)[1], "qty": int(ln.split(" ", 1)[0])} for ln in deck_lines()], **extra})  # fmt: skip
     return storage.slug(name)
-
-
-def _cards():
-    return [mcp_server.CardEntry(name=ln.split(" ", 1)[1], qty=int(ln.split(" ", 1)[0])) for ln in deck_lines()]
 
 
 # --- jsonstore -----------------------------------------------------------------------------------
@@ -87,8 +83,8 @@ def test_save_keeps_extras_and_detects_conflicts():
     slug = _deck(precon={"name": "Grave Danger"})
     storage.set_extra(slug, "guide", {"plan": "x"})
     storage.set_extra(slug, "upgrade_plan", {"stages": []})
-    # a save built from scratch (like Claude's save_deck) keeps them
-    _deck(change_note="Claude-Umbau")
+    # a save built from scratch (like an import over the deck) keeps them
+    _deck(change_note="Umbau")
     deck = storage.load(slug)
     assert deck["guide"] == {"plan": "x"} and deck["upgrade_plan"] == {"stages": []} and deck["precon"]["name"] == "Grave Danger"
     assert deck["version"] == 2
@@ -120,66 +116,19 @@ async def test_edit_survives_a_save_in_between(monkeypatch):
 
     async def revalidate_and_interfere(deck):
         calls["n"] += 1
-        if calls["n"] == 1:  # a Claude job saves while the manual edit is validating
+        if calls["n"] == 1:  # another window saves while the manual edit is validating
             other = storage.load(slug)
-            other["description"] = "von Claude"
-            other["change_note"] = "Claude"
+            other["description"] = "von nebenan"
+            other["change_note"] = "nebenan"
             storage.save(other)
         return await real(deck)
 
     monkeypatch.setattr(deckedit, "revalidate", revalidate_and_interfere)
     out = await deckedit.edit_deck(slug, add=[{"name": "Demonic Tutor"}])
     deck = storage.load(slug)
-    assert deck["description"] == "von Claude"  # Claude's change survived
+    assert deck["description"] == "von nebenan"  # the other change survived
     assert any(c["name"] == "Demonic Tutor" for c in deck["cards"])  # and the edit was applied on top
     assert out["version"] == 3 and calls["n"] == 2
-
-
-async def test_new_deck_with_same_name_gets_own_slug(monkeypatch):
-    first = await mcp_server.save_deck(name="Meren", commanders=MEREN, cards=_cards(), bracket=3)
-    assert "slug='meren'" in first["hint"]
-    # saving again right away with the same commander = the same build (validate, fix, save again)
-    again = await mcp_server.save_deck(name="Meren", commanders=MEREN, cards=_cards(), bracket=2)
-    assert again["slug"] == "meren" and storage.load("meren")["bracket"] == 2
-    # an older deck with that name is never overwritten
-    deck = storage.load("meren")
-    deck["updated"] = "2020-01-01T00:00:00+00:00"
-    storage._write_current(deck)
-    out = await mcp_server.save_deck(name="Meren", commanders=MEREN, cards=_cards(), bracket=4)
-    assert out["slug"] == "meren-2" and storage.load("meren")["bracket"] == 2
-    # nor is a recent deck of another commander
-    other = await mcp_server.save_deck(name="Meren", commanders=["Atraxa, Praetors' Voice"], cards=_cards(), bracket=3)
-    assert other["slug"] == "meren-3"
-    # the same job saving again (fix and save) keeps its deck
-    monkeypatch.setenv("MTG_JOB_ID", "job123")
-    first = await mcp_server.save_deck(name="Gruul", commanders=MEREN, cards=_cards(), bracket=3)
-    again = await mcp_server.save_deck(name="Gruul", commanders=MEREN, cards=_cards(), bracket=2)
-    assert first["slug"] == again["slug"] == "gruul" and storage.load("gruul")["last_job"] == "job123"
-    monkeypatch.setenv("MTG_JOB_ID", "job999")
-    other = await mcp_server.save_deck(name="Gruul", commanders=MEREN, cards=_cards(), bracket=3)
-    assert other["slug"] == "gruul-2"
-
-
-def test_job_finds_its_own_deck_not_one_saved_meanwhile(monkeypatch):
-    import claude_agent_sdk
-
-    job = gui.Job(id="jobabc")
-
-    async def fake_query(prompt, options):
-        assert options.mcp_servers["mtg"]["env"]["MTG_JOB_ID"] == "jobabc"
-        monkeypatch.setenv("MTG_JOB_ID", "jobabc")  # what the job's MCP server does
-        _deck("Built By Job")
-        monkeypatch.delenv("MTG_JOB_ID")
-        _deck("Edited Meanwhile")  # the user edits another deck during the build
-        if False:
-            yield None
-
-    monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
-    asyncio.run(gui._run_claude(job, "x", None, extras={"built_against": ["o1"]}))
-    done = job.events[-1]
-    assert done["type"] == "done" and done["deck"] == "built-by-job"
-    assert storage.load("built-by-job")["built_against"] == ["o1"]
-    assert "built_against" not in storage.load("edited-meanwhile")
 
 
 def test_trash_restore_and_purge():

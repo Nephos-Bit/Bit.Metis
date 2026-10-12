@@ -1,5 +1,5 @@
 ; Hooks for Tauri's NSIS installer (bundle.windows.nsis.installerHooks).
-; The backend (mtgdeck-backend.exe, plus the MCP server and Claude it starts) keeps files in resources\backend
+; The backend (mtgdeck-backend.exe and the tools it starts) keeps files in resources\backend
 ; open. The installer only closes the main window's process, so an update or a manual install over a running
 ; app failed with "cannot open file for writing". End the whole tree before files are copied or removed.
 

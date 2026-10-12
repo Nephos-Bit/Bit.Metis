@@ -20,7 +20,6 @@
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
   <symbol id="i-cards" viewBox="0 0 24 24"><rect x="8" y="3" width="12" height="16" rx="2"/><path d="M4 7v11a3 3 0 0 0 3 3h8"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
-  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.7 1.8 1.8.7-1.8.7L19 22l-.7-1.8-1.8-.7 1.8-.7z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
@@ -33,7 +32,6 @@
   <symbol id="i-table" viewBox="0 0 24 24"><path d="M3 10h18M6 10v9M18 10v9M9 14h6"/><circle cx="8" cy="5" r="1.8"/><circle cx="16" cy="5" r="1.8"/></symbol>
   <symbol id="i-swords" viewBox="0 0 24 24"><path d="M4 4l9 9M4 4h4M4 4v4M20 4l-9 9M20 4h-4M20 4v4"/><path d="M8.5 15.5 5 19M15.5 15.5 19 19M7 13l4 4M17 13l-4 4"/></symbol>
   <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11l2-8H6.3"/><circle cx="9" cy="19.5" r="1.4"/><circle cx="17" cy="19.5" r="1.4"/></symbol>
-  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></symbol>
   <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="9" rx="1.5"/><rect x="13" y="4" width="7" height="9" rx="1.5"/><rect x="4" y="15" width="7" height="5" rx="1.5"/><rect x="13" y="15" width="7" height="5" rx="1.5"/></symbol>
 </svg>
 
@@ -44,18 +42,15 @@
     <button type="button" class="icon-btn" id="nav-toggle" aria-label="Menü öffnen" aria-expanded="false" aria-controls="sidebar">
       <svg class="icon"><use href="#i-menu"/></svg></button>
     <a class="brand" href="#/new"><span class="logo" aria-hidden="true"></span>Commander Deckbuilder</a>
-    <a id="job-indicator-top" class="job-indicator top" href="#/job" hidden aria-label="Laufender Auftrag"><span class="spinner" aria-hidden="true"></span>läuft</a>
+    <a id="job-indicator-top" class="job-indicator top" href="#/new" hidden aria-label="Laufender Auftrag"><span class="spinner" aria-hidden="true"></span>läuft</a>
   </header>
 
   <aside id="sidebar" class="sidebar" aria-label="Navigation">
     <a class="brand" href="#/new"><span class="logo" aria-hidden="true"></span>Commander Deckbuilder</a>
     <a class="btn primary block" href="#/new" data-nav="new"><svg class="icon"><use href="#i-plus"/></svg>Neues Deck</a>
     <button type="button" class="search-btn" id="palette-btn"><svg class="icon"><use href="#i-search"/></svg><span>Suchen …</span><kbd>Strg K</kbd></button>
-    <nav class="nav-top" aria-label="Chat">
-      <a href="#/chat" data-nav="chat"><svg class="icon"><use href="#i-chat"/></svg>Frag Claude <span id="chat-running" class="spinner" aria-label="Claude antwortet" hidden></span></a>
-    </nav>
-    <a id="job-indicator" class="job-indicator" href="#/job" hidden>
-      <span class="spinner" aria-hidden="true"></span><span id="job-indicator-text">Claude arbeitet …</span></a>
+    <a id="job-indicator" class="job-indicator" href="#/new" hidden>
+      <span class="spinner" aria-hidden="true"></span><span id="job-indicator-text">Auftrag läuft …</span></a>
 
     <div class="nav-section">
       <h2 class="nav-title">Meine Decks <span id="deck-count" class="count"></span></h2>
@@ -79,282 +74,68 @@
 
   <main id="main" class="main" tabindex="-1">
 
-    <!-- ============ new deck / commander finder ============ -->
+    <!-- ============ new deck: build it yourself or import one ============ -->
     <section id="view-new" class="view" data-view="new" hidden>
       <header class="page-head">
         <div>
           <h1>Neues Deck</h1>
-          <p class="lead">Claude recherchiert auf EDHREC, Scryfall und Commander Spellbook und baut dir ein legales
-            100-Karten-Deck, geprüft gegen Bracket-Regeln, Budget und deine Blacklist.</p>
+          <p class="lead">Leg ein Deck mit deinem Commander an und stell es selbst zusammen – oder hol dir eins per Link, als Liste
+            oder als Starterdeck. Jedes Deck wird gegen Bracket-Regeln, Budget und deine Blacklist geprüft.</p>
         </div>
       </header>
 
-      <form id="build-form" class="panel form-card" data-mode="build" autocomplete="off">
-        <div class="segmented mode-switch" role="radiogroup" aria-label="Wie willst du starten?">
-          <label><input type="radio" name="mode" value="build" checked><span>Ich habe einen Commander</span></label>
-          <label><input type="radio" name="mode" value="find"><span><svg class="icon"><use href="#i-spark"/></svg>Commander vorschlagen lassen</span></label>
-          <label><input type="radio" name="mode" value="import"><span><svg class="icon"><use href="#i-box"/></svg>Ich habe schon ein Deck</span></label>
-          <label><input type="radio" name="mode" value="meta"><span><svg class="icon"><use href="#i-swords"/></svg>Gegen meine Runde bauen</span></label>
+      <form id="new-form" class="panel form-card" autocomplete="off">
+        <div id="import-box" data-imode="manual">
+          <div class="segmented mode-switch" role="radiogroup" aria-label="Wie willst du starten?">
+            <label><input type="radio" name="imode" value="manual" checked><span><svg class="icon"><use href="#i-plus"/></svg>Selbst zusammenstellen</span></label>
+            <label><input type="radio" name="imode" value="link"><span>Link</span></label>
+            <label><input type="radio" name="imode" value="text"><span>Liste einfügen</span></label>
+            <label><input type="radio" name="imode" value="precon"><span>Starterdeck (Precon)</span></label>
+          </div>
+          <div class="imode-manual">
+            <p class="muted small">Ein leeres Deck mit deinem Commander – die Karten fügst du danach unter „Karten“ → „Bearbeiten“ selbst hinzu
+              (mit Suche, „Ähnliche Karten“ und „Karten vorschlagen“ im Deck-Check).</p>
+            <p class="drop-tip small"><svg class="icon"><use href="#i-cards"/></svg><span><b>Tipp:</b> Öffne scryfall.com daneben und zieh den Commander
+              einfach hier herein. Im offenen Deck landet jede hereingezogene Karte direkt in der Liste.</span></p>
+            <div class="row2">
+              <label class="field">Commander <input id="manual-cmd" list="ac-manual" placeholder="z. B. Meren (auch deutsch)"><datalist id="ac-manual"></datalist></label>
+              <label class="field">Partner / Background <span class="muted">(optional)</span><input id="manual-partner" list="ac-manual-p"><datalist id="ac-manual-p"></datalist></label>
+            </div>
+            <div class="row2">
+              <label class="field">Deckname <span class="muted">(optional)</span><input id="manual-name" maxlength="120" placeholder="sonst der Commander"></label>
+              <label class="field">Bracket <select id="manual-bracket"><option value="1">1 – Exhibition</option><option value="2" selected>2 – Core</option>
+                <option value="3">3 – Upgraded</option><option value="4">4 – Optimized</option><option value="5">5 – cEDH</option></select></label>
+            </div>
+            <button type="button" class="btn primary" id="manual-btn">Leeres Deck anlegen</button>
+          </div>
+          <div class="imode-link">
+            <p class="muted small">Link zu einem öffentlichen Deck von Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats
+              oder einem EDHREC-Durchschnittsdeck.</p>
+            <div class="inline-form">
+              <input id="import-url" type="url" inputmode="url" placeholder="https://www.moxfield.com/decks/…" aria-label="Deck-Link">
+              <button type="button" class="btn primary" id="import-url-btn">Laden</button>
+            </div>
+          </div>
+          <div class="imode-text">
+            <p class="muted small">Liste aus Moxfield („Export“ → „Copy Plain Text“), Archidekt, MTG Arena oder von Hand. Den Commander
+              mit <code>*CMDR*</code> markieren oder unter eine Zeile „Commander“ schreiben – sonst fragen wir nach.</p>
+            <textarea id="import-text" rows="8" aria-label="Deckliste" placeholder="Commander&#10;1 Meren of Clan Nel Toth&#10;&#10;Deck&#10;1 Sol Ring&#10;1 Kultivieren&#10;18 Wald"></textarea>
+            <button type="button" class="btn primary" id="import-text-btn">Liste prüfen</button>
+          </div>
+          <div class="imode-precon">
+            <p class="muted small">Vorgefertigte Commander-Decks von MTGJSON. Danach passt du sie im Deck
+              unter „Karten“ → „Bearbeiten“ Schritt für Schritt an.</p>
+            <input id="precon-q" type="search" placeholder="Name, Set-Kürzel oder Jahr, z. B. „Lorehold“ oder 2024" aria-label="Starterdeck suchen">
+            <p id="precon-msg" class="muted small" aria-live="polite"></p>
+            <div id="precon-pick" class="precon-pick" hidden></div>
+            <ul id="precon-list" class="precon-list"></ul>
+          </div>
+          <p id="import-msg" class="small" aria-live="polite"></p>
+          <div id="import-preview" class="precon-pick import-preview" hidden></div>
         </div>
-        <p class="ai-off" data-ai-note hidden></p>
-
-        <section class="step">
-          <span class="step-num" aria-hidden="true">1</span>
-          <div class="step-body">
-            <h2 class="step-title mode-build">Commander</h2>
-            <h2 class="step-title mode-find">Was für ein Spieler bist du?</h2>
-            <h2 class="step-title mode-import">Woher kommt dein Deck?</h2>
-            <h2 class="step-title mode-meta">Gegen wen?</h2>
-            <div class="mode-meta" id="meta-box">
-              <p class="muted small">Claude sieht sich deine Decks und deine Gegnerdecks an – Commander, Merkmale, deine Notizen und
-                die Bilanz – und baut das stärkste Deck dagegen, das in deinen Rahmen (Bracket, Tischregel, Budget) passt.</p>
-              <p id="meta-summary" class="small"></p>
-              <div class="meta-opps-head" id="meta-opps-head">
-                <span class="field-label">Gegnerdecks</span>
-                <button type="button" class="link-btn" id="meta-all">Alle auswählen</button>
-              </div>
-              <div id="meta-opps" class="pick-chips"></div>
-              <p id="meta-empty" class="empty-inline" hidden>Noch keine Gegnerdecks. Lege sie unter <a href="#/opponents">Gegnerdecks</a> an
-                oder halte im Deck unter „Partien“ fest, gegen wen du gespielt hast.</p>
-              <div class="field-block">
-                <span class="field-label">Was soll Claude tun?</span>
-                <div class="segmented small" role="radiogroup" aria-label="Was soll Claude tun?">
-                  <label><input type="radio" name="meta_action" value="suggest" checked><span>3–5 Decks vorschlagen</span></label>
-                  <label><input type="radio" name="meta_action" value="build"><span>Direkt ein Deck bauen</span></label>
-                </div>
-              </div>
-              <div class="meta-suggest-only meta-opts">
-                <label class="field inline">Anzahl Vorschläge
-                  <select name="meta_count"><option>3</option><option selected>4</option><option>5</option></select></label>
-                <label class="check"><input type="checkbox" name="meta_research" checked> Im Web recherchieren
-                  <span class="muted">– aktuelle Meta-Artikel, EDHREC, Turnier- und Decklisten</span></label>
-                <p class="muted small">Läuft automatisch mit <strong>Opus 5.5</strong> auf <strong>extra hohem Denkaufwand</strong>: gründlicher,
-                  aber langsamer und teurer als ein normaler Lauf. Danach wählst du einen Vorschlag und lässt ihn bauen.</p>
-              </div>
-              <label class="field meta-build-only">Commander vorgeben <span class="muted">(optional – leer lassen, dann wählt Claude)</span>
-                <input name="meta_commander" list="ac-meta-commander" placeholder="leer = Claude sucht den passenden Commander">
-                <datalist id="ac-meta-commander"></datalist>
-              </label>
-            </div>
-            <div class="mode-import" id="import-box" data-imode="link">
-              <div class="segmented small" role="radiogroup" aria-label="Woher kommt das Deck?">
-                <label><input type="radio" name="imode" value="link" checked><span>Link</span></label>
-                <label><input type="radio" name="imode" value="text"><span>Liste einfügen</span></label>
-                <label><input type="radio" name="imode" value="precon"><span>Starterdeck (Precon)</span></label>
-                <label><input type="radio" name="imode" value="manual"><span>Selbst zusammenstellen</span></label>
-              </div>
-              <div class="imode-manual">
-                <p class="muted small">Ein leeres Deck mit deinem Commander – die Karten fügst du danach unter „Karten“ → „Bearbeiten“ selbst hinzu
-                  (mit Suche, „Ähnliche Karten“ und „Karten vorschlagen“ im Deck-Check). Geht ganz ohne KI.</p>
-                <p class="drop-tip small"><svg class="icon"><use href="#i-cards"/></svg><span><b>Tipp:</b> Öffne scryfall.com daneben und zieh den Commander
-                  einfach hier herein. Im offenen Deck landet jede hereingezogene Karte direkt in der Liste.</span></p>
-                <div class="row2">
-                  <label class="field">Commander <input id="manual-cmd" list="ac-manual" placeholder="z. B. Meren (auch deutsch)"><datalist id="ac-manual"></datalist></label>
-                  <label class="field">Partner / Background <span class="muted">(optional)</span><input id="manual-partner" list="ac-manual-p"><datalist id="ac-manual-p"></datalist></label>
-                </div>
-                <div class="row2">
-                  <label class="field">Deckname <span class="muted">(optional)</span><input id="manual-name" maxlength="120" placeholder="sonst der Commander"></label>
-                  <label class="field">Bracket <select id="manual-bracket"><option value="1">1 – Exhibition</option><option value="2" selected>2 – Core</option>
-                    <option value="3">3 – Upgraded</option><option value="4">4 – Optimized</option><option value="5">5 – cEDH</option></select></label>
-                </div>
-                <button type="button" class="btn primary" id="manual-btn">Leeres Deck anlegen</button>
-              </div>
-              <div class="imode-link">
-                <p class="muted small">Link zu einem öffentlichen Deck von Archidekt, Moxfield, MTGGoldfish, TappedOut, Deckstats
-                  oder einem EDHREC-Durchschnittsdeck.</p>
-                <div class="inline-form">
-                  <input id="import-url" type="url" inputmode="url" placeholder="https://www.moxfield.com/decks/…" aria-label="Deck-Link">
-                  <button type="button" class="btn primary" id="import-url-btn">Laden</button>
-                </div>
-              </div>
-              <div class="imode-text">
-                <p class="muted small">Liste aus Moxfield („Export“ → „Copy Plain Text“), Archidekt, MTG Arena oder von Hand. Den Commander
-                  mit <code>*CMDR*</code> markieren oder unter eine Zeile „Commander“ schreiben – sonst fragen wir nach.</p>
-                <textarea id="import-text" rows="8" aria-label="Deckliste" placeholder="Commander&#10;1 Meren of Clan Nel Toth&#10;&#10;Deck&#10;1 Sol Ring&#10;1 Kultivieren&#10;18 Wald"></textarea>
-                <button type="button" class="btn primary" id="import-text-btn">Liste prüfen</button>
-              </div>
-              <div class="imode-precon">
-                <p class="muted small">Vorgefertigte Commander-Decks von MTGJSON. Danach hilft dir der Upgrade-Plan unter „Anpassen“,
-                  das Deck Schritt für Schritt zu verbessern.</p>
-                <input id="precon-q" type="search" placeholder="Name, Set-Kürzel oder Jahr, z. B. „Lorehold“ oder 2024" aria-label="Starterdeck suchen">
-                <p id="precon-msg" class="muted small" aria-live="polite"></p>
-                <div id="precon-pick" class="precon-pick" hidden></div>
-                <ul id="precon-list" class="precon-list"></ul>
-              </div>
-              <p id="import-msg" class="small" aria-live="polite"></p>
-              <div id="import-preview" class="precon-pick import-preview" hidden></div>
-            </div>
-            <div class="mode-build commander-row">
-              <div class="grow">
-                <label class="field">Name
-                  <input id="commander" name="commander" list="ac-commander" placeholder="z. B. Atraxa, Praetors' Voice" required>
-                  <datalist id="ac-commander"></datalist>
-                </label>
-                <button type="button" class="link-btn" id="partner-toggle"><svg class="icon"><use href="#i-plus"/></svg>Partner oder Background</button>
-                <label class="field" id="partner-field" hidden>Partner / Background
-                  <input id="partner" name="partner" list="ac-partner" placeholder="optional">
-                  <datalist id="ac-partner"></datalist>
-                </label>
-              </div>
-              <div id="commander-preview" class="commander-preview" aria-live="polite"></div>
-            </div>
-            <div class="mode-find quiz">
-              <div class="field-block">
-                <span class="field-label">Was macht dir Spaß? <span class="muted">(Mehrfachwahl)</span></span>
-                <div class="pick-chips">
-                  <label><input type="checkbox" name="feel" value="big"><span>Große Kreaturen &amp; angreifen</span></label>
-                  <label><input type="checkbox" name="feel" value="tokens"><span>Viele kleine Kreaturen</span></label>
-                  <label><input type="checkbox" name="feel" value="spells"><span>Zauber &amp; Tricks</span></label>
-                  <label><input type="checkbox" name="feel" value="control"><span>Kontrolle &amp; Antworten</span></label>
-                  <label><input type="checkbox" name="feel" value="graveyard"><span>Friedhof &amp; Wiederkehr</span></label>
-                  <label><input type="checkbox" name="feel" value="sacrifice"><span>Opfern &amp; Leben abziehen</span></label>
-                  <label><input type="checkbox" name="feel" value="voltron"><span>Ein Held, groß gemacht</span></label>
-                  <label><input type="checkbox" name="feel" value="lands"><span>Länder &amp; viel Mana</span></label>
-                  <label><input type="checkbox" name="feel" value="chaos"><span>Politik &amp; Chaos</span></label>
-                  <label><input type="checkbox" name="feel" value="combo"><span>Combos &amp; Engines</span></label>
-                </div>
-              </div>
-              <div class="field-block">
-                <span class="field-label">Welche Farben magst du? <span class="muted">(keine Wahl = egal)</span></span>
-                <div class="color-picks">
-                  <label><input type="checkbox" name="colors" value="W"><span><i class="pip w" aria-hidden="true"></i><b>Weiß</b><small>Ordnung, Armeen, Schutz</small></span></label>
-                  <label><input type="checkbox" name="colors" value="U"><span><i class="pip u" aria-hidden="true"></i><b>Blau</b><small>Wissen, Karten ziehen, Kontrolle</small></span></label>
-                  <label><input type="checkbox" name="colors" value="B"><span><i class="pip b" aria-hidden="true"></i><b>Schwarz</b><small>Macht um jeden Preis, Tod &amp; Friedhof</small></span></label>
-                  <label><input type="checkbox" name="colors" value="R"><span><i class="pip r" aria-hidden="true"></i><b>Rot</b><small>Tempo, Chaos, direkter Schaden</small></span></label>
-                  <label><input type="checkbox" name="colors" value="G"><span><i class="pip g" aria-hidden="true"></i><b>Grün</b><small>Wachstum, Mana, große Kreaturen</small></span></label>
-                </div>
-              </div>
-              <div class="field-block">
-                <span class="field-label">Wie viel Erfahrung hast du mit Commander?</span>
-                <div class="segmented" role="radiogroup" aria-label="Erfahrung">
-                  <label><input type="radio" name="experience" value="new" checked><span>Ich fange gerade an</span></label>
-                  <label><input type="radio" name="experience" value="some"><span>Ein paar Partien</span></label>
-                  <label><input type="radio" name="experience" value="experienced"><span>Erfahren</span></label>
-                </div>
-              </div>
-              <div class="field-block">
-                <span class="field-label">Lieblingsthemen <span class="muted">(optional)</span></span>
-                <div class="pick-chips">
-                  <label><input type="checkbox" name="themes" value="dragons"><span>Drachen</span></label>
-                  <label><input type="checkbox" name="themes" value="vampires"><span>Vampire</span></label>
-                  <label><input type="checkbox" name="themes" value="elves"><span>Elfen</span></label>
-                  <label><input type="checkbox" name="themes" value="zombies"><span>Zombies</span></label>
-                  <label><input type="checkbox" name="themes" value="angels"><span>Engel</span></label>
-                  <label><input type="checkbox" name="themes" value="dinosaurs"><span>Dinosaurier</span></label>
-                  <label><input type="checkbox" name="themes" value="pets"><span>Katzen &amp; Hunde</span></label>
-                  <label><input type="checkbox" name="themes" value="pirates"><span>Piraten</span></label>
-                  <label><input type="checkbox" name="themes" value="artifacts"><span>Artefakte &amp; Maschinen</span></label>
-                  <label><input type="checkbox" name="themes" value="wizards"><span>Magier</span></label>
-                  <label><input type="checkbox" name="themes" value="horror"><span>Horror</span></label>
-                  <label><input type="checkbox" name="themes" value="nature"><span>Natur &amp; Tiere</span></label>
-                </div>
-              </div>
-              <label class="field"><span>Noch etwas? <span class="muted">(optional)</span></span>
-                <textarea name="prompt" rows="2" placeholder="z. B. Lieblingskarte, ein Charakter aus einer Geschichte, „nicht zu kompetitiv“ …"></textarea>
-              </label>
-              <label class="field inline">Anzahl Vorschläge
-                <select name="count"><option>3</option><option selected>5</option><option>8</option></select>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <section class="step not-import">
-          <span class="step-num" aria-hidden="true">2</span>
-          <div class="step-body">
-            <h2 class="step-title">Stärke (Bracket)</h2>
-            <div id="bracket-options" class="brackets" role="radiogroup" aria-label="Bracket"></div>
-            <p id="bracket-desc" class="muted small"></p>
-            <label class="field table-field">Tischregel <span class="muted">– worauf sich deine Runde geeinigt hat</span>
-              <select name="table_rule" id="build-table"><option value="">Keine Tischregel</option></select>
-            </label>
-            <p id="build-table-hint" class="muted small" hidden></p>
-            <details class="more" id="build-profile">
-              <summary>Feinabstimmung <span class="muted">– Stufe im Bracket, Hausregeln, Stil</span></summary>
-              <div class="profile-fields"></div>
-            </details>
-          </div>
-        </section>
-
-        <section class="step not-import">
-          <span class="step-num" aria-hidden="true">3</span>
-          <div class="step-body">
-            <h2 class="step-title">Budget</h2>
-            <label class="switch">
-              <input type="checkbox" id="proxy" name="proxy">
-              <span class="slider" aria-hidden="true"></span>
-              <span>Proxy-Deck <span class="muted">– Preise egal, beste Karten fürs Bracket</span></span>
-            </label>
-            <div class="budget-row" id="budget-row">
-              <label class="field">Maximal
-                <input id="budget" name="budget" type="number" min="0" step="10" placeholder="unbegrenzt" inputmode="numeric">
-              </label>
-              <label class="field">Währung
-                <select name="currency"><option value="eur">EUR</option><option value="usd">USD</option></select>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <section class="step mode-build mode-meta">
-          <span class="step-num" aria-hidden="true">4</span>
-          <div class="step-body">
-            <h2 class="step-title">Wünsche <span class="muted">(optional)</span></h2>
-            <label class="field">Strategie / Thema
-              <input name="strategy" placeholder="z. B. +1/+1 Counter, Superfriends, Tokens">
-            </label>
-            <label class="field">Weitere Wünsche
-              <textarea name="notes" rows="2" placeholder="z. B. keine Infinite-Combos, viel Interaktion, Lieblingskarte XY rein …"></textarea>
-            </label>
-            <label class="check needs-collection" hidden><input type="checkbox" name="prefer_collection"> Karten aus meiner Sammlung bevorzugen
-              <span class="muted">– besessene Karten zählen nicht zum Budget</span></label>
-          </div>
-        </section>
-
-        <details class="more advanced not-import">
-          <summary>Erweitert</summary>
-          <label class="field">KI-Modell
-            <select name="model">
-              <option value="">Standard (Claude-Code-Einstellung)</option>
-              <option value="opus">Opus</option>
-              <option value="sonnet">Sonnet</option>
-              <option value="haiku">Haiku</option>
-            </select>
-          </label>
-          <p class="muted small mode-meta meta-suggest-only">Vorschläge gegen deine Runde laufen immer mit Opus 5.5 (extra hoch); das Modell hier gilt fürs Bauen.</p>
-        </details>
-
-        <div class="form-actions not-import">
-          <button type="submit" id="build-btn" class="btn primary lg">
-            <span class="mode-build">Deck bauen lassen</span><span class="mode-find">Commander vorschlagen</span><span class="mode-meta meta-build-only">Stärkstes Deck bauen lassen</span><span class="mode-meta meta-suggest-only">Vorschläge holen</span></button>
-          <p class="muted small"><span class="mode-build">Dauert ein paar Minuten – du kannst währenddessen andere Decks ansehen.</span>
-            <span class="mode-meta meta-build-only">Claude analysiert zuerst deine Runde, das dauert etwas länger als ein normaler Bau.</span>
-            <span class="mode-meta meta-suggest-only">Rechne mit einigen Minuten – du kannst währenddessen weiterarbeiten.</span>
-            <span class="mode-find">Bracket und Budget fließen in die Vorschläge ein.</span></p>
-        </div>
+        <label class="field inline new-currency">Preise in
+          <select id="new-currency"><option value="eur">EUR</option><option value="usd">USD</option></select></label>
       </form>
-
-      <div id="finder-job-slot" class="job-slot"></div>
-      <section id="meta-suggestions" class="suggestions-wrap" hidden>
-        <h2 class="section-title">Vorschläge gegen deine Runde</h2>
-        <p id="meta-meta" class="muted small"></p>
-        <p id="meta-analysis" class="meta-analysis"></p>
-        <div id="meta-list" class="suggestions meta-list"></div>
-        <details class="more" id="meta-sources-box" hidden><summary>Quellen der Recherche</summary><ul id="meta-sources" class="small"></ul></details>
-      </section>
-      <section id="suggestions" class="suggestions-wrap" hidden>
-        <h2 class="section-title">Vorschläge</h2>
-        <div id="suggestion-list" class="suggestions"></div>
-      </section>
-    </section>
-
-    <!-- ============ running build ============ -->
-    <section id="view-job" class="view" data-view="job" hidden>
-      <div id="job-slot-main" class="job-slot"></div>
-      <div class="empty" id="job-empty">
-        <p>Gerade läuft nichts.</p>
-        <a class="btn" href="#/new">Neues Deck</a>
-      </div>
     </section>
 
     <!-- ============ deck ============ -->
@@ -368,7 +149,6 @@
           <p id="deck-against" class="muted small" hidden></p>
         </div>
         <div class="page-actions">
-          <button type="button" id="ask-claude-btn" class="btn"><svg class="icon"><use href="#i-chat"/></svg><span>Claude fragen</span></button>
           <button type="button" id="copy-btn" class="btn"><svg class="icon"><use href="#i-copy"/></svg><span>Liste kopieren</span></button>
           <details class="menu" id="deck-menu">
             <summary class="btn icon-only" aria-label="Weitere Aktionen" title="Weitere Aktionen"><svg class="icon"><use href="#i-more"/></svg></summary>
@@ -389,7 +169,7 @@
 
       <div class="tabs" role="tablist" id="deck-tabs" aria-label="Deckbereiche">
         <button type="button" role="tab" id="tab-karten" aria-controls="panel-karten" data-tab="karten">Karten</button>
-        <button type="button" role="tab" id="tab-anleitung" aria-controls="panel-anleitung" data-tab="anleitung">Anleitung</button>
+        <button type="button" role="tab" id="tab-anleitung" aria-controls="panel-anleitung" data-tab="anleitung">Rule 0</button>
         <button type="button" role="tab" id="tab-testen" aria-controls="panel-testen" data-tab="testen">Testen</button>
         <button type="button" role="tab" id="tab-anpassen" aria-controls="panel-anpassen" data-tab="anpassen">Anpassen</button>
         <button type="button" role="tab" id="tab-partien" aria-controls="panel-partien" data-tab="partien">Partien <span class="count" id="game-count"></span></button>
@@ -462,7 +242,7 @@
       <!-- guide: rule 0 + play guide, printable as one cheat sheet -->
       <div role="tabpanel" id="panel-anleitung" aria-labelledby="tab-anleitung" class="tabpanel" hidden>
         <div class="sheet-actions no-print">
-          <p class="muted small">Rule 0 und Anleitung passen zusammen auf eine Seite – zum Ausdrucken oder als PDF fürs Handy.</p>
+          <p class="muted small">Rule 0 passt auf eine Seite – zum Ausdrucken oder als PDF fürs Handy.</p>
           <button type="button" class="btn" id="sheet-print">Drucken / als PDF</button>
         </div>
         <div class="sheet">
@@ -479,20 +259,6 @@
               </div>
             </div>
             <dl id="rule0-rows" class="rule0-rows"></dl>
-          </section>
-          <section class="panel guide-panel">
-            <div class="panel-head">
-              <div>
-                <h2>Deck-Anleitung</h2>
-                <p id="guide-meta" class="muted small"></p>
-              </div>
-              <button type="button" class="btn primary no-print" id="guide-btn"><svg class="icon"><use href="#i-spark"/></svg><span>Anleitung erstellen</span></button>
-            </div>
-            <p class="ai-off no-print" data-ai-note hidden></p>
-            <div id="guide-job-slot" class="no-print"></div>
-            <p id="guide-empty" class="empty-inline no-print">Claude schreibt dir einen Spickzettel: Spielplan, was du früh, mittel und spät tust,
-              wann du die Starthand behältst, die wichtigsten Karten und worauf du achten musst. Dauert etwa ein bis zwei Minuten.</p>
-            <div id="guide" class="guide" hidden></div>
           </section>
         </div>
       </div>
@@ -524,7 +290,6 @@
 
       <!-- tune -->
       <div role="tabpanel" id="panel-anpassen" aria-labelledby="tab-anpassen" class="tabpanel" hidden>
-        <div id="tune-job-slot" class="job-slot"></div>
         <section class="panel tune-table" id="table-panel">
           <div class="tune-table-row">
             <label for="deck-table" class="field-label">Tischregel</label>
@@ -534,93 +299,12 @@
           <div id="deck-table-status" aria-live="polite"></div>
         </section>
 
-        <div class="tune-choice">
-          <p class="ai-off" data-ai-note hidden></p>
-          <h2 id="tune-q">Was willst du ändern?</h2>
-          <div class="tune-options" role="radiogroup" aria-labelledby="tune-q">
-            <label><input type="radio" name="tune" value="refine"><span><b>Mit eigenen Worten</b>
-              <small>Du sagst, was anders sein soll – Claude baut um und speichert eine neue Version.</small></span></label>
-            <label><input type="radio" name="tune" value="upgrades"><span><b>Upgrade-Vorschläge</b>
-              <small>Einzelne Tausche für dein Budget – du wählst aus, was ins Deck kommt.</small></span></label>
-            <label><input type="radio" name="tune" value="plan"><span><b>Upgrade-Plan in Stufen</b>
-              <small>Mehrere Schritte mit wachsendem Budget, ideal für Starterdecks.</small><em id="tune-plan-badge" hidden>Plan vorhanden</em></span></label>
-            <label><input type="radio" name="tune" value="power"><span><b>Stärke ändern</b>
-              <small>Bracket oder Feinstufe wechseln – Claude baut passend um.</small></span></label>
-          </div>
-        </div>
-
-        <section class="panel" id="refine-panel" data-tune="refine">
-          <h2>Mit eigenen Worten ändern</h2>
-          <p class="muted">Claude tauscht gezielt Karten aus, prüft das Deck und speichert eine neue Version – rückgängig machen geht im Verlauf.</p>
-          <form id="refine-form" class="inline-form">
-            <input name="request" aria-label="Änderungswunsch" placeholder="z. B. Mehr Kartenzug, unter 150 €, tausche die Board-Wipes …" required>
-            <button type="submit" class="btn primary">Überarbeiten lassen</button>
-          </form>
-          <div class="chips-row" id="refine-chips">
-            <button type="button" class="chip" data-q="Mehr Kartenzug">Mehr Kartenzug</button>
-            <button type="button" class="chip" data-q="Mehr Interaktion (Removal, Counter)">Mehr Interaktion</button>
-            <button type="button" class="chip" data-q="Günstiger machen, ohne an Stärke zu verlieren">Günstiger</button>
-            <button type="button" class="chip" data-q="Manabasis verbessern">Manabasis</button>
-          </div>
-        </section>
-
-        <section class="panel" id="upgrade-panel" data-tune="upgrades" hidden>
-          <h2>Upgrade-Vorschläge</h2>
-          <p class="muted">Claude sucht die wirkungsvollsten Tausche für dein Budget. Du wählst aus, was übernommen wird –
-            ohne weiteren KI-Lauf.</p>
-          <form id="upgrade-form" class="upgrade-form" autocomplete="off">
-            <label class="field upgrade-opp" hidden><span>Besser gegen <span class="muted">(optional)</span></span>
-              <select name="opponent_id" id="upgrade-opp"><option value="">alle meine Gegner berücksichtigen</option></select></label>
-            <label class="field" id="upgrade-budget-field"><span>Budget <span class="muted" id="upgrade-cur">(EUR)</span></span>
-              <input name="budget" type="number" min="0" step="5" placeholder="unbegrenzt" inputmode="numeric"></label>
-            <label class="field"><span>Fokus <span class="muted">(optional)</span></span>
-              <input name="focus" placeholder="z. B. mehr Kartenzug, schnellerer Start, Tutoren"></label>
-            <label class="field">Anzahl
-              <select name="count"><option>5</option><option selected>8</option><option>12</option></select></label>
-            <button type="submit" class="btn primary" id="upgrade-btn">Vorschläge holen</button>
-          </form>
-          <div id="upgrade-result" hidden>
-            <p id="upgrade-summary"></p>
-            <ul id="upgrade-list" class="upgrade-list"></ul>
-            <div class="upgrade-actions">
-              <span id="upgrade-total" class="small"></span>
-              <button type="button" class="btn" id="upgrade-order" title="Ausgewählte neue Karten drucken, ohne sie schon ins Deck zu übernehmen">Zur Sammelbestellung</button>
-              <button type="button" class="btn primary" id="upgrade-apply">Ausgewählte übernehmen</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel" id="plan-panel" data-tune="plan" hidden>
+        <section class="panel" id="power-panel">
           <div class="panel-head">
             <div>
-              <h2>Upgrade-Plan in Stufen</h2>
-              <p class="muted small">Ein Plan, den du Schritt für Schritt umsetzt – ideal für Starterdecks. Jede Stufe übernimmst du einzeln.</p>
+              <h2>Ziel-Stärke</h2>
+              <p class="muted small">Wie stark soll das Deck sein? Die Prüfung misst deine Karten am Ziel – tauschen tust du sie selbst unter „Karten“ → „Bearbeiten“.</p>
             </div>
-          </div>
-          <form id="plan-form" class="plan-form" autocomplete="off">
-            <div class="field-block" id="plan-budgets">
-              <span class="field-label">Budget je Stufe <span class="muted">(insgesamt, <span class="plan-cur">EUR</span>)</span></span>
-              <div class="plan-stages">
-                <label><span class="sr-only">Stufe 1</span><input name="s1" type="number" min="0" step="5" value="20" inputmode="numeric" aria-label="Budget Stufe 1"></label>
-                <label><span class="sr-only">Stufe 2</span><input name="s2" type="number" min="0" step="5" value="50" inputmode="numeric" aria-label="Budget Stufe 2"></label>
-                <label><span class="sr-only">Stufe 3</span><input name="s3" type="number" min="0" step="5" value="100" inputmode="numeric" aria-label="Budget Stufe 3"></label>
-              </div>
-            </div>
-            <label class="field"><span>Fokus <span class="muted">(optional)</span></span>
-              <input name="focus" placeholder="z. B. stärker gegen Flieger, mehr Tokens"></label>
-            <button type="submit" class="btn" id="plan-btn"><svg class="icon"><use href="#i-spark"/></svg><span>Plan erstellen</span></button>
-          </form>
-          <div id="plan-job-slot"></div>
-          <div id="plan-result" hidden>
-            <p id="plan-meta" class="muted small"></p>
-            <p id="plan-summary"></p>
-            <ol id="plan-stages" class="plan-list"></ol>
-          </div>
-        </section>
-
-        <section class="panel" id="power-panel" data-tune="power" hidden>
-          <div class="panel-head">
-            <h2>Stärke ändern</h2>
             <div class="btn-group">
               <button type="button" class="btn" id="step-down">▼ Schwächer</button>
               <button type="button" class="btn" id="step-up">▲ Stärker</button>
@@ -634,10 +318,7 @@
               <div id="retune-brackets" class="brackets" role="radiogroup" aria-label="Ziel-Bracket"></div>
             </div>
             <div class="profile-fields"></div>
-            <label class="field"><span>Wunsch / Notiz <span class="muted">(optional)</span></span>
-              <input name="request" placeholder="z. B. mehr Interaktion statt Combos, Lieblingskarten behalten …">
-            </label>
-            <button type="submit" id="retune-btn" class="btn primary">Deck umbauen</button>
+            <button type="submit" id="retune-btn" class="btn primary">Ziel speichern</button>
           </form>
         </section>
       </div>
@@ -689,10 +370,8 @@
             </form>
           </section>
           <section class="panel" id="game-stats-panel">
-            <div class="panel-head">
-              <h2>Bilanz</h2>
-              <button type="button" class="btn" id="game-learn" hidden><svg class="icon"><use href="#i-spark"/></svg>Aus den Partien lernen</button>
-            </div>
+            <h2>Bilanz</h2>
+            <p id="game-learn" class="hint-box" hidden></p>
             <div id="game-stats"></div>
           </section>
         </div>
@@ -969,69 +648,6 @@
     </section>
 
     <!-- ============ glossary ============ -->
-    <!-- ============ chat with the whole app ============ -->
-    <section id="view-chat" class="view" data-view="chat" hidden>
-      <header class="page-head">
-        <div>
-          <h1>Frag Claude</h1>
-          <p class="lead">Frag alles über deine Decks, Partien, Gegner, Tischregeln und deine Sammlung. Claude sieht die ganze App, ändert aber nichts – Vorschläge setzt du im Deck unter „Anpassen“ um.</p>
-        </div>
-        <div class="page-actions">
-          <button type="button" class="btn" id="chat-new"><svg class="icon"><use href="#i-plus"/></svg>Neues Gespräch</button>
-        </div>
-      </header>
-      <div class="chat-layout">
-        <section class="panel chat-main" aria-labelledby="chat-title">
-          <div class="chat-head">
-            <h2 id="chat-title">Neues Gespräch</h2>
-            <details class="menu" id="chat-menu" hidden>
-              <summary class="btn icon-only small" aria-label="Gespräch: weitere Aktionen" title="Weitere Aktionen"><svg class="icon"><use href="#i-more"/></svg></summary>
-              <div class="menu-list" role="menu">
-                <button type="button" id="chat-rename" role="menuitem">Umbenennen …</button>
-                <button type="button" id="chat-copy" role="menuitem">Als Text kopieren</button>
-                <button type="button" id="chat-delete" role="menuitem" class="danger">Löschen …</button>
-              </div>
-            </details>
-          </div>
-          <p class="ai-off" data-ai-note hidden></p>
-          <div id="chat-start" class="chat-start">
-            <p class="muted">Zum Beispiel:</p>
-            <div class="chips-row" id="chat-chips">
-              <button type="button" class="chip" data-q="Was ist mein stärkstes Deck und warum?">Stärkstes Deck</button>
-              <button type="button" class="chip" data-q="Welches meiner Decks hat das meiste Potential, und was müsste ich dafür tun?">Meistes Potential</button>
-              <button type="button" class="chip" data-q="Wie würdest du welches Deck umbauen? Nenne die Decks, bei denen es sich am meisten lohnt, mit konkreten Tauschen.">Was umbauen?</button>
-              <button type="button" class="chip" data-q="Welches meiner Decks passt am besten zu meiner Runde, und gegen welche Gegner habe ich die schlechtesten Chancen?">Passt zur Runde</button>
-              <button type="button" class="chip" data-q="Vergleiche meine Decks: Stufe, Power, Bilanz, Stärken und Schwächen in einer Tabelle.">Decks vergleichen</button>
-              <button type="button" class="chip" data-q="Welche Karten fehlen mir in mehreren Decks, und welche lohnen sich am meisten zu kaufen oder zu drucken?">Was kaufen?</button>
-            </div>
-            <p id="chat-nodecks" class="muted small" hidden>Du hast noch keine Decks gespeichert – Claude kann trotzdem allgemein helfen, z. B. bei der Commander-Wahl.</p>
-          </div>
-          <div id="chat-log" class="chat-log"></div>
-          <div id="chat-live" class="qa-live" aria-live="polite" hidden>
-            <span class="spinner" aria-hidden="true"></span>
-            <span id="chat-status" class="muted small"></span>
-            <button type="button" class="btn small" id="chat-cancel">Abbrechen</button>
-          </div>
-          <div id="chat-focus" class="chat-focus" hidden><span>Zu <b id="chat-focus-name"></b></span>
-            <button type="button" class="btn ghost small" id="chat-focus-x" aria-label="Deckbezug entfernen" title="Deckbezug entfernen">✕</button></div>
-          <form id="chat-form" class="qa-form chat-form" autocomplete="off">
-            <textarea name="question" rows="2" required aria-label="Deine Frage an Claude"
-              placeholder="z. B. Was ist mein stärkstes Deck und warum?"></textarea>
-            <button type="submit" id="chat-btn" class="btn primary">Fragen</button>
-          </form>
-          <div class="chat-options">
-            <label class="check"><input type="checkbox" id="chat-deep"> Gründlich nachdenken <span class="muted">(Opus 5.5, extra hoher Denkaufwand – dauert länger)</span></label>
-            <span class="muted small">Enter schickt ab, Umschalt+Enter macht eine neue Zeile.</span>
-          </div>
-        </section>
-        <aside class="panel chat-side" aria-labelledby="chat-list-title">
-          <h2 id="chat-list-title">Gespräche</h2>
-          <ul id="chat-list" class="chat-list"></ul>
-          <p id="chat-list-empty" class="muted small">Noch keine Gespräche.</p>
-        </aside>
-      </div>
-    </section>
-
     <section id="view-glossary" class="view narrow" data-view="glossary" hidden>
       <header class="page-head">
         <div>
@@ -1050,7 +666,7 @@
           <div>
             <h1>Gegnerdecks</h1>
             <p class="lead">Decks, gegen die du gespielt hast – nur der Commander und was dir aufgefallen ist, keine Kartenliste.
-              Beim Umbauen und bei Upgrade-Vorschlägen achtet Claude darauf; beim Festhalten einer Partie wählst du sie aus.</p>
+              Beim Festhalten einer Partie wählst du sie aus, die Bilanz gegen jedes Deck steht hier.</p>
           </div>
         </header>
         <form class="panel" id="opp-new" autocomplete="off">
@@ -1117,14 +733,6 @@
           <div class="form-actions"><button type="submit" class="btn primary">Speichern</button></div>
         </form>
 
-        <section class="panel">
-          <h2>Mit meinem Deck vorbereiten</h2>
-          <div class="opp-prepare">
-            <label class="field"><span class="sr-only">Mein Deck</span><select id="opp-my-deck" aria-label="Mein Deck"></select></label>
-            <button type="button" class="btn" id="opp-ask">Claude fragen: Wie spiele ich dagegen?</button>
-            <button type="button" class="btn" id="opp-upgrade">Upgrades gegen dieses Deck</button>
-          </div>
-        </section>
 
         <section class="panel">
           <h2>Partien gegen dieses Deck</h2>
@@ -1257,41 +865,21 @@
       <header class="page-head">
         <div>
           <h1>Einstellungen</h1>
-          <p class="lead">KI-Funktionen, Sync zwischen Geräten, Datensicherung, Papierkorb, Kartendatenbank und Proxy-Druck.</p>
+          <p class="lead">Sync zwischen Geräten, Datensicherung, Papierkorb, Kartendatenbank und Proxy-Druck.</p>
         </div>
       </header>
-
-      <section class="panel" id="ai-panel">
-        <h2>KI-Funktionen (Claude)</h2>
-        <p class="muted small">Deck bauen lassen, Umbauen, Upgrade-Vorschläge, Anleitung, Fragen und „Frag Claude“ nutzen Claude Code.
-          Alles andere – Importieren, selbst zusammenstellen, Bearbeiten, Drucken, Sammlung, Sammelbestellungen, Partien, Gegnerdecks,
-          Tischregeln, Testhand – funktioniert auch ohne.</p>
-        <label class="check"><input type="checkbox" id="ai-enabled"> KI-Funktionen nutzen</label>
-        <p id="ai-status" class="small"></p>
-        <div class="btn-row" id="ai-login-row" hidden>
-          <button type="button" class="btn primary" id="ai-login-btn">Bei Claude anmelden</button>
-        </div>
-        <p class="muted small" id="ai-login-hint" hidden>Die Anmeldung öffnet den Browser – bestätige dort und folge dem Terminal, das hier erscheint.
-          Öffnet sich kein Browser, kopiere den Link aus dem Terminal.</p>
-        <details class="more" id="ai-logout-more" hidden>
-          <summary>Abmelden</summary>
-          <p class="muted small">Meldet Claude auf diesem Rechner ab. Die KI-Funktionen brauchen danach eine neue Anmeldung.</p>
-          <button type="button" class="btn" id="ai-logout-btn">Bei Claude abmelden</button>
-        </details>
-        <div id="settings-job-slot" class="job-slot"></div>
-      </section>
 
       <section class="panel" id="desktop-panel" hidden>
         <h2>Desktop-App</h2>
         <p class="muted small">Version <span id="desktop-version">–</span>. Schließen versteckt das Fenster – die App läuft im Infobereich neben der Uhr weiter
-          (Sync, Fragen vom Handy). Rechtsklick auf das Symbol: Öffnen, Datenordner öffnen, Beenden.</p>
+          (Sync). Rechtsklick auf das Symbol: Öffnen, Datenordner öffnen, Beenden.</p>
         <p id="desktop-update" class="small muted" role="status"></p>
         <div class="btn-row">
           <button type="button" class="btn primary" id="desktop-install" hidden>Update installieren</button>
           <button type="button" class="btn" id="desktop-check">Nach Updates suchen</button>
         </div>
         <label class="check"><input type="checkbox" id="desktop-autostart"> Beim Anmelden im Hintergrund starten</label>
-        <label class="check"><input type="checkbox" id="desktop-notify"> Benachrichtigen, wenn das Fenster versteckt ist (Deck fertig, Antwort da, Neues vom Handy)</label>
+        <label class="check"><input type="checkbox" id="desktop-notify"> Benachrichtigen, wenn das Fenster versteckt ist (Neues von deinen anderen Geräten)</label>
         <div class="btn-row">
           <button type="button" class="btn" id="desktop-data">Datenordner öffnen</button>
           <button type="button" class="btn" id="desktop-log">Protokoll öffnen</button>
@@ -1300,7 +888,7 @@
 
       <section class="panel" id="sync-panel">
         <h2>Sync zwischen Geräten</h2>
-        <p class="muted small">Gleicht Decks samt Versionen, Partien, Fragen, Gegnerdecks, Sammlung, Tischregeln, Blacklist, Sammelbestellungen
+        <p class="muted small">Gleicht Decks samt Versionen, Partien, Gegnerdecks, Sammlung, Tischregeln, Blacklist, Sammelbestellungen
           und Druckauswahl über deinen eigenen Sync-Server ab. Jedes Gerät behält alle Daten – ohne Netz arbeitest du einfach weiter.</p>
         <div id="sync-off">
           <p id="sync-revoked" class="hint-box" hidden>Dieses Gerät wurde am Server abgemeldet. Mit einem neuen Kopplungscode verbindest du es wieder –
@@ -1333,9 +921,6 @@
                 <option value="0">nur per Knopf</option>
               </select></label>
           </div>
-          <label class="check sync-phone"><input type="checkbox" id="sync-phone-questions">
-            <span>Fragen vom Handy beantworten <span class="muted small">– „Frag Claude“ in der Handy-App; dieser PC beantwortet sie, solange die App hier läuft (nutzt Claude auf diesem PC)</span></span></label>
-          <p id="sync-phone-line" class="small muted" hidden></p>
           <div id="sync-pairing" class="sync-pairing" hidden>
             <div id="sync-qr" class="sync-qr" aria-hidden="true"></div>
             <div>
@@ -1373,7 +958,7 @@
         <div class="panel-head">
           <div>
             <h2>Daten &amp; Sicherung</h2>
-            <p class="muted small">Eine Sicherung enthält alles, was du angelegt hast: Decks mit Versionen, Partien und Fragen,
+            <p class="muted small">Eine Sicherung enthält alles, was du angelegt hast: Decks mit Versionen und Partien,
               Sammlung, Gegnerdecks, Tischregeln, Blacklist, Sammelbestellungen, Bildauswahl und Einstellungen.</p>
           </div>
         </div>
@@ -1389,7 +974,7 @@
         <div class="panel-head">
           <div>
             <h2>Papierkorb</h2>
-            <p class="muted small">Gelöschte Decks samt Versionen, Fragen und Partien. Bis du sie endgültig löschst, holst du sie hier zurück.</p>
+            <p class="muted small">Gelöschte Decks samt Versionen und Partien. Bis du sie endgültig löschst, holst du sie hier zurück.</p>
           </div>
           <button type="button" class="btn ghost small" id="trash-empty" hidden>Papierkorb leeren …</button>
         </div>
@@ -1465,7 +1050,7 @@
   <div class="job-head">
     <span class="spinner lg" id="job-spinner" aria-hidden="true"></span>
     <div class="job-text">
-      <h2 id="job-title">Claude arbeitet …</h2>
+      <h2 id="job-title">Auftrag läuft …</h2>
       <p id="job-status" class="job-status">Starte …</p>
     </div>
     <div class="job-buttons">
@@ -1511,7 +1096,6 @@
   <table class="shortcuts">
     <tr><td><kbd>Strg</kbd> <kbd>K</kbd></td><td>Schnellsuche: Decks, Seiten, Aktionen</td></tr>
     <tr><td><kbd>Strg</kbd> <kbd>N</kbd></td><td>Neues Deck</td></tr>
-    <tr><td><kbd>Strg</kbd> <kbd>J</kbd></td><td>Frag Claude</td></tr>
     <tr><td><kbd>Strg</kbd> <kbd>,</kbd></td><td>Einstellungen</td></tr>
     <tr><td><kbd>Strg</kbd> <kbd>S</kbd></td><td>Kartenänderungen speichern (im Bearbeiten-Modus)</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Dialog, Menü oder Schnellsuche schließen</td></tr>
@@ -1681,8 +1265,6 @@
         <h3>Begriffe auf dieser Karte</h3>
         <dl id="card-view-terms-list"></dl>
       </div>
-      <button type="button" id="card-view-explain" class="btn primary" hidden><svg class="icon"><use href="#i-spark"/></svg>Erklär mir die Karte</button>
-      <p id="card-view-explain-hint" class="muted small" hidden>Claude erklärt im Tab „Fragen“, was die Karte macht, wofür sie in diesem Deck ist und wann du sie spielst.</p>
     </div>
   </div>
 </dialog>

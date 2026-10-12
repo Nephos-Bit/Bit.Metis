@@ -3,10 +3,8 @@
 import asyncio
 import time
 
-import claude_agent_sdk
 import httpx
 import pytest
-from claude_agent_sdk import ResultMessage
 from fastapi.testclient import TestClient
 
 from mtgdeck import http
@@ -68,18 +66,14 @@ def _wait(job_id, timeout=10):
     raise AssertionError(gui.JOBS[job_id].events)
 
 
-def test_job_always_ends_with_done_even_when_its_last_step_crashes(monkeypatch):
-    async def fake_query(prompt, options):
-        yield ResultMessage(subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=1,
-                            session_id="s", result="ok")  # fmt: skip
-
-    async def broken_finish(job, ok, text, structured):
+def test_job_always_ends_with_done_even_when_its_last_step_crashes():
+    async def broken(job):
+        job.emit(type="status", text="läuft")
         raise HttpError(503, "https://json.edhrec.com/pages/x.json")
 
-    monkeypatch.setattr(claude_agent_sdk, "query", fake_query)
     with TestClient(gui.app) as client:
         async def start():
-            return gui._start("hallo", None, finish=broken_finish)["job"]
+            return gui._start_runner(broken)["job"]
 
         job_id = client.portal.call(start)
         job = _wait(job_id)

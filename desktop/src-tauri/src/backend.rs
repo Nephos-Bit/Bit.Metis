@@ -301,7 +301,7 @@ pub fn stop(backend: &Backend) {
     }
 }
 
-/// End the backend together with everything it started (its MCP server, Claude): on Windows a plain kill leaves
+/// End the backend together with everything it started (e.g. MPC Autofill): on Windows a plain kill leaves
 /// the children alive, and they keep files in the install folder open – which breaks updates.
 fn kill_tree(pid: u32) {
     #[cfg(windows)]

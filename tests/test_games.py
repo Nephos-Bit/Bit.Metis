@@ -1,16 +1,15 @@
-"""Game log per deck: storage, statistics, learning focus, routes and the MCP tool."""
+"""Game log per deck: storage, statistics, learning focus, and routes."""
 
 import pytest
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import games, storage
-from mtgdeck.gui.app import app, upgrade_prompt, UpgradeRequest
-from mtgdeck.mcp_server import mcp
+from mtgdeck.gui.app import app
 
 
 async def _save(name="Games"):
-    await mcp.call_tool("save_deck", {"name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
+    await save_deck(**{"name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
     return storage.slug(name)
 
@@ -32,9 +31,6 @@ async def test_add_stats_and_focus():
     with pytest.raises(ValueError):
         games.add(slug, result="win", issues=["unbekannt"])
     assert games.learn_focus([]) == ""
-    # the upgrade prompt knows the record
-    prompt = upgrade_prompt(storage.load(slug), UpgradeRequest(), False)
-    assert "1 Siege, 2 Niederlagen" in prompt and "zu wenige Länder (2×)" in prompt
 
 
 async def test_routes_and_delete_with_deck():
@@ -55,15 +51,6 @@ async def test_routes_and_delete_with_deck():
     games.add(slug, result="draw")
     storage.delete(slug)
     assert games.games(slug) == []
-
-
-async def test_mcp_deck_games():
-    slug = await _save()
-    games.add(slug, result="loss", issues=["combo"])
-    res = await mcp.call_tool("deck_games", {"slug": slug})
-    text = str(res)
-    assert "gegen eine Combo verloren" in text and "learn_focus" in text
-    assert "error" in str(await mcp.call_tool("deck_games", {"slug": "nope"}))
 
 
 def _ev(turn, kind, delta, frm=None, text=None):
@@ -105,15 +92,6 @@ async def test_round_logs_turn_by_turn_and_over_all_games():
     assert games.stats([{"result": "win"}])["rounds"] is None
     focus = games.learn_focus(games.games(slug))
     assert "Antworten auf Krenko, Mob Boss (40 Schaden in 2 Runden)" in focus and "in Zug 3 im Schnitt 25 Leben verloren" in focus
-    # the GUI gets the turns, Claude the turns without the raw log
+    # the GUI gets the turns of each logged round
     shown = games.summary(slug)["games"]
     assert "round_turns" not in shown[0] and shown[1]["round_turns"][0]["life"] == 38
-    text = str(await mcp.call_tool("deck_games", {"slug": slug}))
-    assert "per_turn" in text and "round_turns" not in text and "'at':" not in text
-    prompt = upgrade_prompt(storage.load(slug), UpgradeRequest(), False)
-    assert "Runden-Helfer (2 Runden mitgezählt): am meisten Schaden: Krenko, Mob Boss 40 (davon 35 Commander-Schaden)" in prompt
-    assert "schwerster eigener Zug: Zug 3" in prompt
-    from mtgdeck import overview
-    row = overview.deck_row(storage.load(slug))
-    assert row["games"]["hurt_by"] == [KRENKO, ATRAXA]
-    assert "am meisten Schaden (Runden-Helfer) von Krenko, Mob Boss" in "\n".join(overview.prompt_lines(overview.build()))

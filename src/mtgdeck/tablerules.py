@@ -301,20 +301,9 @@ async def revalidate_decks(rule_id: str) -> list[str]:
         try:
             await deckedit.revalidate(deck)
             storage.save(deck, expect_version=deck.get("version"))
-        except storage.ConflictError:  # saved meanwhile (e.g. by a Claude job) – that save validated already
+        except storage.ConflictError:  # saved meanwhile (e.g. by a sync) – that save validated already
             continue
         except Exception:  # network trouble: keep the old validation
             continue
         done.append(deck["slug"])
     return done
-
-
-def prompt_lines(rs: dict[str, Any] | None) -> list[str]:
-    """Prompt lines for Claude: what the table demands and how to pass it on."""
-    if not rs:
-        return []
-    lines = [f"- Tischregel „{rs['name']}“ gilt für dieses Deck" + (f" ({rs['description']})" if rs.get("description") else "") + ":"]
-    lines += [f"  - {line}" for line in summary_lines(rs)]
-    lines.append(f"  - Übergib `table_rule=\"{rs['id']}\"` an `validate_deck` und `save_deck`; Verstöße sind Fehler. "
-                 "Freie Absprachen prüft niemand automatisch – halte sie selbst ein.")  # fmt: skip
-    return lines

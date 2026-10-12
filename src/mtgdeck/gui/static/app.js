@@ -120,12 +120,12 @@ for (const dlg of $$("dialog")) {
 }
 
 // ============================================================================================
-// state + routing  (#/new · #/job · #/deck/<slug>/<tab> · #/blacklist · #/settings)
+// state + routing  (#/new · #/deck/<slug>/<tab> · #/blacklist · #/settings)
 // ============================================================================================
 let brackets = [];
 let currentDeck = null;
 let deckIndex = [];
-const VIEWS = ["new", "job", "chat", "deck", "collection", "orders", "glossary", "opponents", "tables", "blacklist", "settings"];
+const VIEWS = ["new", "deck", "collection", "orders", "glossary", "opponents", "tables", "blacklist", "settings"];
 const TABS = ["karten", "anleitung", "testen", "anpassen", "partien", "verlauf", "drucken"];
 let lastView = null;
 
@@ -154,8 +154,6 @@ async function route() {
   if (r.view === "orders") showOrders(r.slug);
   if (r.view === "tables") showTables(r.slug);
   if (r.view === "opponents") showOpponents(r.slug);
-  if (r.view === "chat") showChat(r.slug);
-  if (r.view === "job") $("#job-empty").hidden = !!(jobInfo && jobInfo.slot === "#job-slot-main" && !jobInfo.dismissed);
   placeJobPanel();
   setNavOpen(false);
   markNav(r);
@@ -166,7 +164,7 @@ async function route() {
     lastView = key;
   }
   document.title = (r.view === "deck" && currentDeck ? currentDeck.name
-    : { new: "Neues Deck", job: "Claude arbeitet", chat: "Frag Claude", collection: "Meine Sammlung", orders: "Sammelbestellungen", glossary: "Glossar", opponents: "Gegnerdecks", tables: "Tischregeln", blacklist: "Blacklist", settings: "Einstellungen" }[r.view]) + " · Commander Deckbuilder";
+    : { new: "Neues Deck", collection: "Meine Sammlung", orders: "Sammelbestellungen", glossary: "Glossar", opponents: "Gegnerdecks", tables: "Tischregeln", blacklist: "Blacklist", settings: "Einstellungen" }[r.view]) + " · Commander Deckbuilder";
 }
 window.addEventListener("hashchange", route);
 
@@ -175,7 +173,7 @@ function markNav(r = parseHash()) {
     if (r.view === "deck" && a.dataset.slug === r.slug) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
-  for (const a of $$(".nav-bottom a, .nav-top a")) {
+  for (const a of $$(".nav-bottom a")) {
     if (a.dataset.nav === r.view) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
@@ -218,54 +216,20 @@ $("#deck-filter").addEventListener("input", renderDeckList);
 // ============================================================================================
 // new deck / commander finder
 // ============================================================================================
-const buildForm = $("#build-form");
+const newForm = $("#new-form");
 
 async function initBrackets() {
   brackets = await api("/api/brackets");
-  const options = (name, checked) => brackets.map((b) => `
-    <label title="${esc(b.summary)}"><input type="radio" name="${name}" value="${b.number}" ${b.number === checked ? "checked" : ""}>
+  $("#retune-brackets").innerHTML = brackets.map((b) => `
+    <label title="${esc(b.summary)}"><input type="radio" name="rbracket" value="${b.number}">
     <span><b>${b.number}</b><small>${esc(b.name)}</small></span></label>`).join("");
-  $("#bracket-options").innerHTML = options("bracket", 3);
-  $("#retune-brackets").innerHTML = options("rbracket", 0);
-  $("#bracket-options").addEventListener("change", showBracketDesc);
-  showBracketDesc();
 }
 
-function showBracketDesc() {
-  const n = Number(new FormData(buildForm).get("bracket"));
-  const b = brackets.find((x) => x.number === n);
-  $("#bracket-desc").innerHTML = b ? `<b>${esc(b.name)}:</b> ${esc(b.summary)}` : "";
-}
-
-function setMode(mode) {
-  buildForm.dataset.mode = mode;
-  buildForm.elements.mode.value = mode;
-  // only the fields of the active mode take part in validation and submission
-  for (const el of buildForm.querySelectorAll(":is(.mode-build, .mode-find, .mode-meta) :is(input, textarea, select)")) {
-    el.disabled = !el.closest(".mode-build, .mode-find, .mode-meta").classList.contains(`mode-${mode}`);
-  }
-  buildForm.dataset.metaAction = buildForm.elements.meta_action.value || "suggest";
-  $("#meta-suggestions").hidden = mode !== "meta" || !metaResult;
-  if (mode === "meta") renderMetaBox();
-  if (mode === "import" && $("#import-box").dataset.imode === "precon" && !preconItems) searchPrecons();
-}
-buildForm.addEventListener("change", (e) => {
-  if (e.target.name === "mode") setMode(e.target.value);
-  if (e.target.name === "meta_action") buildForm.dataset.metaAction = e.target.value;
-});
-
-$("#partner-toggle").addEventListener("click", () => {
-  $("#partner-field").hidden = false;
-  $("#partner-toggle").hidden = true;
-  $("#partner").focus();
-});
-
-$("#proxy").addEventListener("change", () => {
-  const on = $("#proxy").checked;
-  $("#budget-row").classList.toggle("off", on);
-  $("#budget").disabled = on;
-  buildForm.elements.currency.disabled = on;
-  $("#budget").placeholder = on ? "egal (Proxy)" : "unbegrenzt";
+newForm.addEventListener("submit", (e) => {  // Enter in the link or search field
+  e.preventDefault();
+  const im = $("#import-box").dataset.imode;
+  if (im === "link") loadImport({ url: $("#import-url").value });
+  else if (im === "precon") searchPrecons();
 });
 
 function wireAutocomplete(input, list, onPick) {
@@ -279,84 +243,6 @@ function wireAutocomplete(input, list, onPick) {
   }, 200));
   input.addEventListener("change", () => onPick && onPick(input.value));
 }
-
-async function previewCommander(name) {
-  const box = $("#commander-preview");
-  if (!name) { box.innerHTML = ""; return; }
-  try {
-    const c = await api(`/api/card?name=${enc(name)}`);
-    box.innerHTML = c.image ? `<img src="${esc(c.image)}" alt="${esc(c.name)}">` : "";
-    if (c.name && c.name !== name) $("#commander").value = c.name;
-  } catch { box.innerHTML = ""; }
-}
-
-function buildSettings() {
-  const f = Object.fromEntries(new FormData(buildForm));
-  const proxy = $("#proxy").checked;
-  return {
-    bracket: Number(f.bracket), currency: buildForm.elements.currency.value, proxy,
-    budget: !proxy && f.budget ? Number(f.budget) : null, model: f.model || null,
-  };
-}
-
-buildForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (buildForm.dataset.mode === "import") {  // Enter in the link or search field
-    const im = $("#import-box").dataset.imode;
-    if (im === "link") loadImport({ url: $("#import-url").value });
-    else if (im === "precon") searchPrecons();
-    return;
-  }
-  if (currentJob) { toast("Es läuft schon ein Auftrag – warte kurz oder brich ihn ab.", "error"); return; }
-  const f = Object.fromEntries(new FormData(buildForm));
-  try {
-    if (buildForm.dataset.mode === "meta") {
-      const fd = new FormData(buildForm);
-      const ids = fd.getAll("meta_opps");
-      if (!oppIndex.length) { toast("Noch keine Gegnerdecks – lege sie unter „Gegnerdecks“ an.", "error"); return; }
-      if (!ids.length) { toast("Wähle mindestens ein Gegnerdeck aus.", "error"); return; }
-      const body = {
-        ...buildSettings(), commander: f.meta_commander || null, opponent_ids: ids.length === oppIndex.length ? [] : ids,
-        strategy: f.strategy || null, notes: f.notes || null, prefer_collection: !!f.prefer_collection,
-        profile: readProfile($("#build-profile .profile-fields")), table_rule: f.table_rule || null,
-      };
-      if (f.meta_action === "suggest") {
-        const { job } = await api("/api/build-meta/suggest", { method: "POST", body: { ...body, commander: null,
-          count: Number(f.meta_count), research: !!f.meta_research } });
-        startJob(job, "Claude analysiert deine Runde (Opus 5.5 · extra hoch)", { kind: "meta", slot: "#finder-job-slot", route: "#/new" });
-        $("#finder-job-slot").scrollIntoView({ behavior: "smooth", block: "center" });
-        return;
-      }
-      if (metaPick && body.commander === metaPick.name) body.partner = metaPick.partner || null;
-      const { job } = await api("/api/build-meta", { method: "POST", body });
-      startJob(job, body.commander ? `Claude baut ${body.commander} gegen deine Runde` : "Claude baut das stärkste Deck gegen deine Runde",
-        { kind: "build", slot: "#job-slot-main", route: "#/job" });
-      go("#/job");
-    } else if (buildForm.dataset.mode === "find") {
-      const fd = new FormData(buildForm);
-      const body = { ...buildSettings(), prompt: f.prompt || "", count: Number(f.count), feel: fd.getAll("feel"),
-        colors: fd.getAll("colors"), themes: fd.getAll("themes"), experience: f.experience || null };
-      if (!body.prompt.trim() && !body.feel.length && !body.colors.length && !body.themes.length) {
-        toast("Wähl mindestens aus, was dir Spaß macht – oder beschreibe deinen Wunsch.", "error");
-        buildForm.querySelector(".quiz input").focus();
-        return;
-      }
-      const { job } = await api("/api/find-commander", { method: "POST", body });
-      $("#suggestions").hidden = true;
-      startJob(job, "Claude sucht passende Commander", { kind: "finder", slot: "#finder-job-slot", route: "#/new" });
-      $("#finder-job-slot").scrollIntoView({ behavior: "smooth", block: "center" });
-    } else {
-      const body = {
-        ...buildSettings(), commander: f.commander, partner: f.partner || null,
-        strategy: f.strategy || null, notes: f.notes || null, prefer_collection: !!f.prefer_collection,
-        profile: readProfile($("#build-profile .profile-fields")), table_rule: f.table_rule || null,
-      };
-      const { job } = await api("/api/build", { method: "POST", body });
-      startJob(job, `Claude baut ${body.commander}${body.partner ? " + " + body.partner : ""}`, { kind: "build", slot: "#job-slot-main", route: "#/job" });
-      go("#/job");
-    }
-  } catch (err) { fail(err); }
-});
 
 // ---------- import an existing deck: link, pasted list or starter deck ----------
 let importData = null;
@@ -378,7 +264,7 @@ $("#manual-btn").addEventListener("click", async () => {
   b.textContent = "Lege an …";
   try {
     const r = await api("/api/decks/new", { method: "POST", body: { commander, partner: $("#manual-partner").value.trim() || null,
-      name: $("#manual-name").value.trim(), bracket: Number($("#manual-bracket").value), currency: buildForm.elements.currency.value || "eur" } });
+      name: $("#manual-name").value.trim(), bracket: Number($("#manual-bracket").value), currency: $("#new-currency").value } });
     await refreshDeckList();
     for (const id of ["#manual-cmd", "#manual-partner", "#manual-name"]) $(id).value = "";
     go(`#/deck/${enc(r.slug)}/karten`);
@@ -447,7 +333,7 @@ $("#import-preview").addEventListener("click", async (e) => {
   if (!commanders.length) { toast("Wähle den Commander des Decks.", "error"); return; }
   const bracket = $("#imp-bracket").value;
   const body = { name: $("#imp-name").value.trim() || "Importiertes Deck", commanders, cards: d.cards, categories: d.categories,
-    bracket: bracket ? Number(bracket) : null, currency: buildForm.elements.currency.value || "eur", site: d.site, source: d.source || "" };
+    bracket: bracket ? Number(bracket) : null, currency: $("#new-currency").value, site: d.site, source: d.source || "" };
   b.disabled = true;
   b.textContent = "Importiere und prüfe …";
   try {
@@ -501,55 +387,11 @@ $("#precon-pick").addEventListener("click", async (e) => {
   b.disabled = true;
   b.textContent = "Importiere und prüfe …";
   try {
-    const r = await api("/api/precons/import", { method: "POST", body: { file: b.dataset.file, currency: buildForm.elements.currency.value || "eur" } });
+    const r = await api("/api/precons/import", { method: "POST", body: { file: b.dataset.file, currency: $("#new-currency").value } });
     await refreshDeckList();
     go(`#/deck/${enc(r.slug)}/karten`);
-    toast("Starterdeck importiert. Tipp: Unter „Anpassen“ erstellt Claude dir einen Upgrade-Plan in Stufen.", "info", 8000);
+    toast("Starterdeck importiert.", "info", 6000);
   } catch (err) { b.disabled = false; b.textContent = "Importieren & prüfen"; fail(err); }
-});
-
-const COLOR_NAMES = { W: "Weiß", U: "Blau", B: "Schwarz", R: "Rot", G: "Grün" };
-let suggestions = [];
-
-function renderSuggestions(items) {
-  suggestions = items || [];
-  $("#suggestions").hidden = !suggestions.length;
-  const priceKey = buildForm.elements.currency.value === "usd" ? "price_usd" : "price_eur";
-  $("#suggestion-list").innerHTML = suggestions.map((s, i) => {
-    const colors = (s.color_identity || []).map((c) => COLOR_NAMES[c] || c).join(", ") || "Farblos";
-    return `<article class="suggestion">
-      ${s.image ? `<img src="${esc(s.image)}" alt="${esc(s.name)}" loading="lazy">` : ""}
-      <h3>${esc(s.name)}${s.partner ? " + " + esc(s.partner) : ""}</h3>
-      <p class="muted small">${esc(s.archetype || "")} · ${esc(colors)}${s[priceKey] ? " · " + esc(s[priceKey]) : ""}</p>
-      ${s.difficulty ? `<span class="difficulty ${esc(s.difficulty)}" title="${esc(s.difficulty_note || "")}">${esc(s.difficulty[0].toUpperCase() + s.difficulty.slice(1))} zu spielen</span>` : ""}
-      <p><span class="why-label">Warum passt der zu dir?</span> ${esc(s.why || "")}</p>
-      ${s.difficulty_note ? `<p class="muted small">${esc(s.difficulty_note)}</p>` : ""}
-      ${s.bracket_fit ? `<p class="muted small">${esc(s.bracket_fit)}</p>` : ""}
-      <div class="actions">
-        <button type="button" class="btn" data-use="${i}">Übernehmen</button>
-        <button type="button" class="btn primary" data-build="${i}">Deck bauen</button>
-      </div>
-    </article>`;
-  }).join("");
-  if (suggestions.length) $("#suggestions").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-$("#suggestion-list").addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-use], button[data-build]");
-  if (!btn) return;
-  const s = suggestions[Number(btn.dataset.use ?? btn.dataset.build)];
-  setMode("build");
-  $("#commander").value = s.name;
-  $("#partner").value = s.partner || "";
-  if (s.partner) { $("#partner-field").hidden = false; $("#partner-toggle").hidden = true; }
-  const strategy = buildForm.elements.strategy;
-  if (s.strategy && !strategy.value) strategy.value = s.strategy;
-  previewCommander(s.name);
-  if (btn.dataset.build !== undefined) buildForm.requestSubmit();
-  else {
-    buildForm.scrollIntoView({ behavior: "smooth", block: "start" });
-    toast(`${s.name} übernommen – prüf noch Bracket und Budget.`);
-  }
 });
 
 // ---------- power profile (sub-tier, house rules, style) ----------
@@ -591,31 +433,16 @@ function levelText(bracket, tier) {
 }
 
 // ============================================================================================
-// jobs: one Claude Code run (or print/autofill runner) at a time, streamed via SSE
+// jobs: one print or MPC Autofill run at a time, streamed via SSE
 // ============================================================================================
 let currentJob = null;   // id of the running job
 let jobInfo = null;      // { id, kind, slot, route, slug, title, started, error, dismissed }
 let eventSource = null;
 let elapsedTimer = null;
 
-const TOOL_LABELS = {
-  Skill: "lädt die Deckbau-Anleitung", Read: "liest eine Referenz", Glob: "sieht in den Anleitungen nach",
-  Grep: "sieht in den Anleitungen nach", ToolSearch: "bereitet die Werkzeuge vor",
-  edhrec_recommendations: "prüft EDHREC-Empfehlungen", edhrec_average_deck: "lädt ein EDHREC-Durchschnittsdeck",
-  search_cards: "sucht Karten auf Scryfall", local_card_search: "durchsucht die Kartendatenbank",
-  get_cards: "liest Kartentexte", find_commanders: "sucht Commander", find_combos: "sucht Combos",
-  validate_deck: "prüft das Deck (Legalität, Bracket, Budget)", save_deck: "speichert das Deck",
-  load_deck: "lädt das Deck", bracket_rules: "liest die Bracket-Regeln", game_changers: "prüft Game Changer",
-  get_blacklist: "liest deine Blacklist", table_rules: "liest deine Tischregeln", opponent_decks: "liest deine Gegnerdecks", update_opponent_deck: "notiert ein Gegnerdeck", update_table_rule: "ändert eine Tischregel", deck_games: "liest deine Partien", import_deck: "importiert ein Deck", export_deck: "exportiert das Deck",
-  list_deck_versions: "liest den Verlauf", compare_deck_versions: "vergleicht Versionen",
-  app_overview: "verschafft sich einen Überblick über deine Decks", list_decks: "liest deine Decks",
-  collection_status: "prüft deine Sammlung", collection_search: "durchsucht deine Sammlung", print_orders: "liest deine Sammelbestellungen",
-};
-const toolText = (name) => `Claude ${TOOL_LABELS[name] || `nutzt ${name}`} …`;
-
-function startJob(jobId, title, { kind = "build", slot = "#job-slot-main", route: home = "#/job", slug = null, since = null } = {}) {
+function startJob(jobId, title, { kind, slot, route: home, slug = null }) {
   currentJob = jobId;
-  jobInfo = { id: jobId, kind, slot, route: home, slug, since, title, started: Date.now(), error: null, dismissed: false };
+  jobInfo = { id: jobId, kind, slot, route: home, slug, title, started: Date.now(), error: null, dismissed: false };
   const panel = $("#job");
   panel.classList.remove("finished", "failed");
   $("#job-title").textContent = title;
@@ -639,7 +466,7 @@ function startJob(jobId, title, { kind = "build", slot = "#job-slot-main", route
   });
 }
 
-// the job panel lives in the slot of the view that started it (build page, deck tab, finder)
+// the job panel lives in the slot of the view that started it (deck print tab, order page, settings)
 function placeJobPanel() {
   const panel = $("#job");
   const visible = jobInfo && !jobInfo.dismissed && (!jobInfo.slug || (currentDeck && currentDeck.slug === jobInfo.slug)
@@ -662,61 +489,12 @@ function tickElapsed() {
 }
 
 function setBusy(busy) {
-  for (const sel of ["#build-btn", "#refine-form [type=submit]", "#retune-btn", "#prepare-btn", "#mpc-btn", "#upgrade-btn", "#guide-btn", "#plan-btn", "#ask-claude-btn"]) {
+  for (const sel of ["#prepare-btn", "#mpc-btn"]) {
     const b = $(sel);
-    const noAi = AI_ONLY.includes(sel) && !aiState.available;
-    b.disabled = busy || noAi;
-    b.title = busy ? "Es läuft gerade ein Auftrag" : noAi ? "Braucht Claude (KI) – gerade nicht verfügbar" : "";
+    b.disabled = busy;
+    b.title = busy ? "Es läuft gerade ein Auftrag" : "";
   }
 }
-
-// ---------- without Claude: AI features are switched off with a note, everything else works ----------
-let aiState = { enabled: true, available: true, reason: null };
-const AI_ONLY = ["#build-btn", "#refine-form [type=submit]", "#retune-btn", "#upgrade-btn", "#guide-btn", "#plan-btn", "#ask-claude-btn"];
-const AI_OFF_TEXT = "Ohne KI geht weiter: Deck importieren oder selbst zusammenstellen, bearbeiten, drucken, Sammlung, Partien, Gegnerdecks.";
-async function refreshAi(first = false) {
-  aiState = await api("/api/ai").catch(() => aiState);
-  applyAi();
-  // without AI a new deck starts with what works: put it together yourself
-  if (first && !aiState.available && buildForm.dataset.mode === "build") { setMode("import"); setImportMode("manual"); }
-}
-function applyAi() {
-  const off = !aiState.available;
-  document.body.classList.toggle("no-ai", off);
-  for (const el of $$("[data-ai-note]")) {
-    el.hidden = !off;
-    el.textContent = `${aiState.reason || "Claude ist gerade nicht verfügbar."} ${AI_OFF_TEXT}`;
-  }
-  setBusy(!!currentJob);
-  updateChatLive();
-  $("#ai-enabled").checked = !!aiState.enabled;
-  const login = aiState.login || null;
-  const how = { oauth_token: " Angemeldet mit deinem Claude-Konto.", api_key: " Angemeldet per API-Schlüssel." }[login?.method] || "";
-  $("#ai-status").innerHTML = aiState.available
-    ? `<span class="ok">✓ Claude ist bereit.</span>${esc(how)}` + (aiState.last_error ? ` <span class="warn">Der letzte Lauf scheiterte: ${esc(aiState.last_error)}</span>` : "")
-    : `<span class="warn">${esc(aiState.reason || "nicht verfügbar")}</span>`;
-  const needsLogin = !!(aiState.enabled && login && login.logged_in !== true);
-  $("#ai-login-row").hidden = !needsLogin;
-  $("#ai-login-hint").hidden = !needsLogin;
-  $("#ai-logout-more").hidden = !(login && login.logged_in === true);
-}
-$("#ai-login-btn").addEventListener("click", async () => {
-  try {
-    const r = await api("/api/ai/login", { method: "POST", body: { rows: 24, cols: 100 } });
-    startJob(r.job, "Bei Claude anmelden", { kind: "login", slot: "#settings-job-slot", route: "#/settings" });
-  } catch (err) { fail(err); }
-});
-$("#ai-logout-btn").addEventListener("click", async () => {
-  if (!(await ask({ title: "Bei Claude abmelden?", text: "Die KI-Funktionen brauchen danach eine neue Anmeldung.", ok: "Abmelden", danger: true }))) return;
-  try { aiState = await api("/api/ai/logout", { method: "POST" }); applyAi(); toast("Abgemeldet."); } catch (err) { fail(err); }
-});
-$("#ai-enabled").addEventListener("change", async (e) => {
-  try {
-    await api("/api/settings", { method: "POST", body: { ai_enabled: e.target.checked } });
-    await refreshAi();
-    toast(e.target.checked ? "KI-Funktionen sind an." : "KI-Funktionen sind aus – alles andere funktioniert wie gewohnt.");
-  } catch (err) { fail(err); }
-});
 
 function logLine(cls, text) {
   const log = $("#log");
@@ -730,15 +508,9 @@ function logLine(cls, text) {
 function handleEvent(ev) {
   switch (ev.type) {
     case "text": logLine("text", ev.text); setJobStatus(ev.text); break;
-    case "tool": logLine("tool", `→ ${ev.name} ${ev.summary || ""}`); setJobStatus(toolText(ev.name)); break;
     case "status": logLine("tool", ev.text); setJobStatus(ev.text); break;
     case "error": logLine("error", "Fehler: " + ev.text); if (jobInfo) jobInfo.error = ev.text; break;
     case "result": logLine("result", ev.text); break;
-    case "suggestions": renderSuggestions(ev.items); break;
-    case "meta_suggestions": renderMetaSuggestions(ev.result); break;
-    case "upgrades": renderUpgrades(ev, jobInfo?.slug); break;
-    case "guide": onGuide(ev.guide, jobInfo?.slug); break;
-    case "plan": onUpgradePlan(ev.plan, jobInfo?.slug); break;
     case "progress": {
       const bar = $("#progress");
       bar.hidden = false;
@@ -749,7 +521,7 @@ function handleEvent(ev) {
     }
     case "print": onPrepared(ev.result); break;
     case "console":
-      if (ev.running) { openTerminal(); setJobStatus(jobInfo?.kind === "login" ? "Anmeldung läuft – folge den Schritten im Terminal und im Browserfenster." : "MPC Autofill läuft – bediene es im Terminal."); }
+      if (ev.running) { openTerminal(); setJobStatus("MPC Autofill läuft – bediene es im Terminal."); }
       else if (term) term.options.disableStdin = true;
       break;
     case "term":
@@ -768,41 +540,15 @@ async function finishJob(ev) {
   setBusy(false);
   $("#job").classList.add(ev.ok ? "finished" : "failed");
   $("#cancel-btn").textContent = "Schließen";
-  if (info.kind === "login") refreshAi();
   if (!ev.ok) {
     setJobStatus(info.error || "Beendet, ohne Ergebnis. Details unten.");
     placeJobPanel();
     return;
   }
   switch (info.kind) {
-    case "build":
-      info.dismissed = true;
-      await refreshDeckList();
-      toast("Dein Deck ist fertig.");
-      go(`#/deck/${enc(ev.deck)}`);
-      break;
-    case "deck":
-      info.dismissed = true;
-      await refreshDeckList();
-      if (currentDeck?.slug === info.slug) currentDeck = null;  // reload on the next route
-      toast("Deck aktualisiert – die Änderungen stehen im Verlauf.");
-      go(`#/deck/${enc(info.slug)}/verlauf`);
-      offerOrderAfterRebuild(info.slug, info.since);
-      break;
-    case "finder":
-    case "meta":
-    case "upgrade":
-    case "guide":
-    case "plan":
-      info.dismissed = true;
-      break;
     case "print":
       info.dismissed = true;
       toast("Druckdateien sind fertig.");
-      break;
-    case "login":
-      info.dismissed = true;
-      toast("Angemeldet – Claude ist bereit.");
       break;
     default:  // autofill: keep the terminal output visible until closed
       setJobStatus("MPC Autofill ist beendet.");
@@ -817,7 +563,6 @@ $("#cancel-btn").addEventListener("click", async () => {
   }
   if (jobInfo) jobInfo.dismissed = true;
   placeJobPanel();
-  if (parseHash().view === "job") $("#job-empty").hidden = false;
 });
 
 // ============================================================================================
@@ -848,14 +593,9 @@ async function openDeck(slug) {
   renderCards(d);
   $("#retune-form").querySelector(`[name="rbracket"][value="${d.bracket || 3}"]`).checked = true;
   setProfile($("#retune-form .profile-fields"), d.power_profile);
-  $("#retune-form").elements.request.value = "";
   renderPower(d);
-  $("#upgrade-budget-field").hidden = !!d.proxy;
-  $("#upgrade-cur").textContent = `(${CURRENCY_SIGNS[d.currency || "eur"]})`;
-  if (upgrades?.slug !== d.slug) $("#upgrade-result").hidden = true;
   renderHistory(d);
-  renderGuide(d);
-  renderUpgradePlan(d);
+  renderSheetTitle(d);
   loadGames(d);
   loadOwnership(d);
   loadTokens(d);
@@ -1294,10 +1034,9 @@ async function dropCardsIntoDeck(cards) {
 }
 
 function dropCommander(cards) {
-  const onForm = parseHash().view === "new" && buildForm.dataset.mode === "import" && $("#import-box").dataset.imode === "manual";
+  const onForm = parseHash().view === "new" && $("#import-box").dataset.imode === "manual";
   const cmd = $("#manual-cmd"), partner = $("#manual-partner");
   if (parseHash().view !== "new") go("#/new");
-  setMode("import");
   setImportMode("manual");
   if (onForm && cmd.value.trim() && !partner.value.trim()) partner.value = cards[0].name;  // second drop = partner
   else { cmd.value = cards[0].name; partner.value = cards[1]?.name || ""; }
@@ -1453,7 +1192,7 @@ $("#token-list").addEventListener("click", (e) => {
 });
 
 // ---------- replacement suggestions ----------
-// deck check: traffic light per area; "fix" offers role candidates (no AI) or upgrade suggestions with a focus
+// deck check: traffic light per area; "fix" offers role candidates
 const STATUS_TEXT = { green: "passt", yellow: "prüfen", red: "Problem" };
 const ROLE_CATEGORY = { ramp: "Ramp", card_draw: "Draw", removal: "Removal", board_wipe: "Board Wipe" };
 function renderHealth(d) {
@@ -1468,35 +1207,12 @@ function renderHealth(d) {
         ${it.cards.length ? `<p class="why">Erkannt: ${it.cards.slice(0, 12).map(esc).join(", ")}${it.cards.length > 12 ? " …" : ""}</p>` : ""}
         ${it.fix ? `<div class="btn-group">
           ${it.fix.role ? `<button type="button" class="btn small" data-role="${esc(it.fix.role)}" data-label="${esc(it.label)}">Karten vorschlagen</button>` : ""}
-          ${it.fix.focus ? `<button type="button" class="btn small ghost" data-focus="${esc(it.fix.focus)}">${icon("spark")}Upgrades mit KI</button>` : ""}
         </div>` : ""}</div></details></li>`).join("");
 }
-// "Anpassen": one tool at a time (own words · upgrade suggestions · staged plan · change strength)
-const TUNES = ["refine", "upgrades", "plan", "power"];
-function showTune(key, scroll = false, remember = true) {
-  if (!TUNES.includes(key)) key = "refine";
-  for (const p of $$("#panel-anpassen [data-tune]")) p.hidden = p.dataset.tune !== key;
-  const radio = $(`#panel-anpassen input[name=tune][value="${key}"]`);
-  if (radio) radio.checked = true;
-  if (remember) store.set("tune", key);
-  if (scroll) $(`#panel-anpassen [data-tune="${key}"]`).scrollIntoView({ behavior: "smooth", block: "start" });
-}
-$("#panel-anpassen .tune-options").addEventListener("change", (e) => { if (e.target.name === "tune") showTune(e.target.value); });
-showTune(store.get("tune") || "refine");
-
 $("#health-list").addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.dataset.role) return openRoleCandidates(b.dataset.role, b.dataset.label);
-  if (b.dataset.focus) {
-    selectTab("anpassen");
-    showTune("upgrades");
-    const f = $("#upgrade-form");
-    f.elements.focus.value = b.dataset.focus;
-    f.scrollIntoView({ behavior: "smooth", block: "center" });
-    $("#upgrade-btn").focus({ preventScroll: true });
-    toast("Fokus eingetragen – mit „Vorschläge holen“ startest du die Suche.");
-  }
+  if (b.dataset.role) openRoleCandidates(b.dataset.role, b.dataset.label);
 });
 
 let similarRole = null;
@@ -1565,7 +1281,7 @@ $("#similar-grid").addEventListener("click", async (e) => {
 });
 $("#similar-close").addEventListener("click", () => $("#similar").close());
 
-// hover preview of card images (list view and card references in answers)
+// hover preview of card images (list view, hand, swaps)
 const preview = $("#preview");
 document.addEventListener("mouseover", (e) => {
   const el = e.target.closest(".card[data-img]");
@@ -1620,9 +1336,6 @@ function showCardView(name, cd) {
     `<figure><img src="${esc(u.replace("/normal/", "/large/"))}" alt="${esc(label)}"><figcaption>${i ? "Rückseite" : "Vorderseite"}: ${esc(label)}</figcaption></figure>`).join("")
     || '<p class="muted">Kein Bild verfügbar.</p>';
   $("#card-view-link").href = cd.scryfall_uri || `https://scryfall.com/search?q=${enc('!"' + name + '"')}`;
-  const inDeck = !!currentDeck && parseHash().view === "deck" && (!!currentDeck.card_data?.[name] || currentDeck.commanders.includes(name));
-  $("#card-view-explain").hidden = $("#card-view-explain-hint").hidden = !inDeck;
-  $("#card-view-explain").dataset.name = name;
   preview.hidden = true;
   $("#card-view").showModal();
   loadCardText(name);
@@ -1722,13 +1435,6 @@ $("#card-view-rules").addEventListener("click", (e) => {
   for (const el of $$(`#card-view-text [data-term="${CSS.escape(b.dataset.term)}"]`)) el.classList.add("on");
   $(`#card-view-terms-list dt[data-term="${CSS.escape(b.dataset.term)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 });
-$("#card-view-explain").addEventListener("click", () => {
-  const name = $("#card-view-explain").dataset.name;
-  $("#card-view").close();
-  askClaudeAbout(currentDeck, `Erkläre mir die Karte [[${name}]]: Was macht sie genau, ${currentDeck ? "wofür ist sie in diesem Deck " : ""}und wann spiele ich sie am besten?`, { send: true });
-});
-$("#ask-claude-btn").addEventListener("click", () => askClaudeAbout(currentDeck));
-
 // ---------- deck actions ----------
 $("#copy-btn").addEventListener("click", async () => {
   if (!currentDeck) return;
@@ -1766,7 +1472,7 @@ $("#validate-btn").addEventListener("click", async () => {
 $("#delete-btn").addEventListener("click", async () => {
   if (!currentDeck) return;
   const ok = await ask({ title: `„${currentDeck.name}“ löschen?`, ok: "In den Papierkorb", danger: true,
-    text: "Das Deck kommt mit allen Versionen, Fragen und Partien in den Papierkorb (Einstellungen → Papierkorb). Bis du ihn leerst, kannst du es zurückholen." });
+    text: "Das Deck kommt mit allen Versionen und Partien in den Papierkorb (Einstellungen → Papierkorb). Bis du ihn leerst, kannst du es zurückholen." });
   if (!ok) return;
   const name = currentDeck.name;
   let r;
@@ -1778,191 +1484,8 @@ $("#delete-btn").addEventListener("click", async () => {
 });
 
 // ============================================================================================
-// tab "Anpassen": refine in own words, re-tune power
+// tab "Anpassen": table rule + the power the deck aims for
 // ============================================================================================
-$("#refine-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!currentDeck || currentJob) return;
-  const request = new FormData(e.target).get("request");
-  const { slug, name } = currentDeck;
-  try {
-    const { job } = await api("/api/refine", { method: "POST", body: { slug, request } });
-    e.target.reset();
-    startJob(job, `Claude überarbeitet ${name}`, { kind: "deck", slug, since: currentDeck?.version, slot: "#tune-job-slot", route: `#/deck/${enc(slug)}/anpassen` });
-  } catch (err) { fail(err); }
-});
-$("#refine-chips").addEventListener("click", (e) => {
-  const chip = e.target.closest(".chip");
-  if (!chip) return;
-  const input = $("#refine-form").elements.request;
-  input.value = chip.dataset.q;
-  input.focus();
-});
-
-// ---------- upgrade suggestions ----------
-let upgrades = null;  // { slug, items, currency, budget }
-$("#upgrade-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!currentDeck || currentJob) return;
-  const f = new FormData(e.target);
-  const body = { budget: f.get("budget") ? Number(f.get("budget")) : null, focus: f.get("focus") || null, count: Number(f.get("count")),
-    opponent_id: f.get("opponent_id") || null };
-  const { slug, name } = currentDeck;
-  try {
-    const { job } = await api(`/api/decks/${enc(slug)}/upgrades`, { method: "POST", body });
-    upgrades = { slug, items: [], budget: body.budget };
-    $("#upgrade-result").hidden = true;
-    startJob(job, `Claude sucht Upgrades für ${name}`, { kind: "upgrade", slug, slot: "#tune-job-slot", route: `#/deck/${enc(slug)}/anpassen` });
-    $("#tune-job-slot").scrollIntoView({ behavior: "smooth", block: "nearest" });
-  } catch (err) { fail(err); }
-});
-
-// one swap (− out → + in) with images, reason and price; ``i`` adds the selection checkbox
-function upgradeRow(u, currency, i = null) {
-  return `<li>
-    ${i !== null ? `<label class="up-check"><input type="checkbox" data-i="${i}" checked aria-label="${esc(u.add)} statt ${esc(u.remove)} übernehmen"></label>` : ""}
-    <span class="up-imgs">
-      ${u.image_remove ? `<img class="card out" data-img="${esc(u.image_remove)}" data-name="${esc(u.remove)}" src="${esc(u.image_remove)}" alt="">` : ""}
-      ${u.image ? `<img class="card in" data-img="${esc(u.image)}" data-name="${esc(u.add)}" src="${esc(u.image)}" alt="">` : ""}
-    </span>
-    <div class="up-text">
-      <div><span class="minus">− ${esc(u.remove)}</span> <span aria-hidden="true">→</span> <b class="plus">+ ${esc(u.add)}</b>
-        ${u.impact ? `<span class="tagb">${esc(u.impact)}</span>` : ""}${u.owned ? '<span class="own ok" title="Schon in deiner Sammlung">✓ Sammlung</span>' : ""}</div>
-      <div class="muted small">${esc(u.reason)}</div>
-    </div>
-    <span class="up-price">${u.owned ? "0 (hast du)" : u.price != null ? esc(fmtPrice(u.price, currency)) : "–"}</span>
-  </li>`;
-}
-
-function renderUpgrades(ev, slug) {
-  upgrades = { ...(upgrades || {}), slug, items: ev.items, currency: (ev.currency || "eur").toUpperCase() };
-  if (currentDeck?.slug !== slug) return;
-  $("#upgrade-result").hidden = false;
-  $("#upgrade-summary").textContent = ev.summary || "";
-  $("#upgrade-list").innerHTML = ev.items.map((u, i) => upgradeRow(u, upgrades.currency, i)).join("");
-  updateUpgradeTotal();
-  $("#upgrade-panel").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function selectedUpgrades() {
-  return $$("#upgrade-list input[data-i]").filter((b) => b.checked).map((b) => upgrades.items[Number(b.dataset.i)]);
-}
-function updateUpgradeTotal() {
-  const sel = selectedUpgrades();
-  const total = sel.reduce((a, u) => a + (u.owned ? 0 : u.price || 0), 0);
-  const over = upgrades.budget != null && total > upgrades.budget;
-  $("#upgrade-total").innerHTML = `${sel.length} ausgewählt · <b class="${over ? "bad" : ""}">${esc(fmtPrice(total, upgrades.currency))}</b>`
-    + (upgrades.budget != null ? ` von ${esc(fmtPrice(upgrades.budget, upgrades.currency))}` : "");
-  $("#upgrade-apply").disabled = !sel.length;
-}
-$("#upgrade-list").addEventListener("change", updateUpgradeTotal);
-$("#upgrade-apply").addEventListener("click", async () => {
-  const sel = selectedUpgrades();
-  if (!sel.length || !currentDeck || upgrades?.slug !== currentDeck.slug) return;
-  const body = {
-    add: sel.map((u) => ({ name: u.add, qty: 1 })), remove: sel.map((u) => u.remove),
-    note: `Upgrades: ${sel.map((u) => `${u.remove} → ${u.add}`).join(", ")}`,
-  };
-  try {
-    const since = currentDeck.version;
-    const r = await api(`/api/decks/${enc(currentDeck.slug)}/cards`, { method: "POST", body });
-    const slug = currentDeck.slug;
-    upgrades = null;
-    $("#upgrade-result").hidden = true;
-    currentDeck = null;
-    await refreshDeckList();
-    go(`#/deck/${enc(slug)}/verlauf`);
-    toast(`${sel.length} Upgrades übernommen (v${r.version}).${r.legal ? "" : " Achtung: Deck ist nicht legal – siehe Prüfung."}`, r.legal ? "info" : "error");
-    offerOrderAfterRebuild(slug, since);
-  } catch (err) { fail(err); }
-});
-
-// staged upgrade plan: one AI run, every stage applied on its own (stored in the deck)
-function planStageApplied(stage, deck) {
-  const names = new Set(deck.cards.map((c) => c.name));
-  return stage.upgrades.every((u) => names.has(u.add) && !names.has(u.remove));
-}
-let tuneDeck = null;  // deck the „Anpassen“ choice was last set up for
-function renderUpgradePlan(d) {
-  const plan = d.upgrade_plan;
-  const cur = (d.currency || "eur").toUpperCase();
-  $$(".plan-cur").forEach((el) => { el.textContent = CURRENCY_SIGNS[d.currency || "eur"]; });
-  $("#plan-budgets").hidden = !!d.proxy;
-  $("#plan-btn span").textContent = plan ? "Neuen Plan erstellen" : "Plan erstellen";
-  $("#tune-plan-badge").hidden = !plan;
-  $("#plan-result").hidden = !plan;
-  if (tuneDeck !== d.slug) {  // a deck with an open upgrade plan opens „Anpassen“ on it
-    tuneDeck = d.slug;
-    const open = plan?.stages?.some((st) => !planStageApplied(st, d));
-    showTune(open ? "plan" : store.get("tune") || "refine", false, false);
-  }
-  if (!plan) return;
-  $("#plan-meta").textContent = `Erstellt ${fmtDate(plan.created)} für v${plan.version}`;
-  $("#plan-summary").textContent = plan.summary || "";
-  let blocked = false;  // later stages build on earlier ones
-  $("#plan-stages").innerHTML = plan.stages.map((st, i) => {
-    const applied = planStageApplied(st, d);
-    const canApply = !applied && !blocked;
-    if (!applied) blocked = true;
-    const budget = st.budget != null ? ` / ${fmtPrice(st.budget, cur)}` : "";
-    return `<li class="${applied ? "applied" : ""}">
-      <div class="plan-head"><h3>Stufe ${i + 1}: ${esc(st.title)}<span class="cost">${esc(fmtPrice(st.cost, cur))}${esc(budget)}</span></h3>
-        ${applied ? '<span class="done">✓ übernommen</span>'
-          : `<span class="btn-group"><button type="button" class="btn small ghost" data-stage-order="${i}" title="Die neuen Karten dieser Stufe drucken">Zur Sammelbestellung</button>
-             <button type="button" class="btn small${canApply ? " primary" : ""}" data-stage="${i}"${canApply ? "" : ' disabled title="Erst die vorige Stufe übernehmen"'}>Stufe übernehmen</button></span>`}</div>
-      ${st.goal ? `<p class="muted small">${esc(st.goal)}</p>` : ""}
-      <ul class="upgrade-list">${st.upgrades.map((u) => upgradeRow(u, cur)).join("")}</ul></li>`;
-  }).join("");
-}
-$("#plan-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!currentDeck || currentJob) return;
-  const f = new FormData(e.target);
-  const { slug, name } = currentDeck;
-  if (currentDeck.upgrade_plan && !(await ask({ title: "Neuen Plan erstellen?", text: "Der bisherige Plan wird ersetzt.", ok: "Neu erstellen" }))) return;
-  const stages = currentDeck.proxy ? [1, 2, 3] : ["s1", "s2", "s3"].map((k) => Number(f.get(k))).filter((v) => v > 0);
-  if (!stages.length) { toast("Gib mindestens für eine Stufe ein Budget an.", "error"); return; }
-  try {
-    const { job } = await api(`/api/decks/${enc(slug)}/upgrade-plan`, { method: "POST", body: { stages, focus: f.get("focus") || null } });
-    startJob(job, `Claude plant Upgrades für ${name}`, { kind: "plan", slug, slot: "#plan-job-slot", route: `#/deck/${enc(slug)}/anpassen` });
-  } catch (err) { fail(err); }
-});
-function onUpgradePlan(plan, slug) {
-  if (currentDeck?.slug !== slug) return;
-  currentDeck.upgrade_plan = plan;
-  renderUpgradePlan(currentDeck);
-  toast("Der Upgrade-Plan ist fertig.");
-  $("#plan-result").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-$("#plan-stages").addEventListener("click", async (e) => {
-  const o = e.target.closest("button[data-stage-order]");
-  if (o && currentDeck?.upgrade_plan) {
-    const i = Number(o.dataset.stageOrder), st = currentDeck.upgrade_plan.stages[i];
-    orderDialog({ title: `Stufe ${i + 1} drucken`, text: `${st.upgrades.length} neue Karten aus „${st.title}“ – ohne sie schon ins Deck zu übernehmen.`,
-      body: { items: st.upgrades.map((u) => ({ kind: "card", name: u.add, qty: 1, source: `Upgrade-Plan ${currentDeck.name}`, source_slug: currentDeck.slug })) } });
-    return;
-  }
-  const b = e.target.closest("button[data-stage]");
-  if (!b || !currentDeck?.upgrade_plan) return;
-  const i = Number(b.dataset.stage);
-  const st = currentDeck.upgrade_plan.stages[i];
-  const body = {
-    add: st.upgrades.map((u) => ({ name: u.add, qty: 1 })), remove: st.upgrades.map((u) => u.remove),
-    note: `Upgrade-Plan Stufe ${i + 1} (${st.title}): ${st.upgrades.map((u) => `${u.remove} → ${u.add}`).join(", ")}`,
-  };
-  b.disabled = true;
-  try {
-    const since = currentDeck.version;
-    const r = await api(`/api/decks/${enc(currentDeck.slug)}/cards`, { method: "POST", body });
-    const slug = currentDeck.slug;
-    currentDeck = null;
-    await refreshDeckList();
-    go(`#/deck/${enc(slug)}/anpassen`);
-    offerOrderAfterRebuild(slug, since);
-    toast(`Stufe ${i + 1} übernommen (v${r.version}).${r.legal ? "" : " Achtung: Deck ist nicht legal – siehe Prüfung."}`, r.legal ? "info" : "error");
-  } catch (err) { b.disabled = false; fail(err); }
-});
-
 function retuneTarget() {
   const form = $("#retune-form");
   return {
@@ -2001,25 +1524,30 @@ function renderPower(d) {
     ? `<span class="legend-bar"></span> Aktuell: <b>${esc(fmtPower(power.value))}</b> · ${esc(power.text)}
        <details class="more"><summary>Wie kommt der Wert zustande?</summary>${esc(power.components.map((c) => `${c.reason} ${c.points > 0 ? "+" : ""}${c.points}`).join(", "))}${power.floor_from_rules ? ` – durch die Regeln mindestens Bracket ${power.floor_from_rules}` : ""}</details>`
     : "Noch keine Power-Einschätzung – „⋯ → Neu prüfen“.<br>")
-    + `<span class="legend-dot"></span> Ziel: <b>${esc(levelText(bracket, tier))}</b>${changed ? " – mit „Deck umbauen“ übernehmen" : ""}`;
+    + `<span class="legend-dot"></span> Ziel: <b>${esc(levelText(bracket, tier))}</b>${changed ? " – mit „Ziel speichern“ übernehmen" : ""}`;
 }
 
 $("#retune-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!currentDeck || currentJob) return;
+  if (!currentDeck) return;
   const { bracket } = retuneTarget();
-  const profile = readProfile($("#retune-form .profile-fields")) || {};
-  const request = new FormData(e.target).get("request") || null;
-  const { slug, name } = currentDeck;
+  const profile = readProfile($("#retune-form .profile-fields"));
+  const notes = currentDeck.power_profile?.notes;
+  const { slug } = currentDeck;
+  const btn = $("#retune-btn");
+  btn.disabled = true;
   try {
-    const { job } = await api("/api/retune", { method: "POST", body: { slug, bracket, profile, request } });
-    startJob(job, `Claude stimmt ${name} ab: ${levelText(bracket, profile.tier)}`, { kind: "deck", slug, since: currentDeck?.version, slot: "#tune-job-slot", route: `#/deck/${enc(slug)}/anpassen` });
-    $("#tune-job-slot").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    await api(`/api/decks/${enc(slug)}/target`, { method: "PUT", body: { bracket, profile: profile || notes ? { ...profile, notes: notes || "" } : null } });
+    currentDeck = null;
+    await refreshDeckList();
+    await route();
+    toast(`Ziel gespeichert: ${levelText(bracket, profile?.tier)}. Die Prüfung unter „Karten“ zeigt, was noch nicht passt.`);
   } catch (err) { fail(err); }
+  finally { btn.disabled = false; }
 });
 
 // ============================================================================================
-// tab "Anleitung": rule 0 (no AI) + play guide (Claude, stored in the deck), one printable sheet
+// tab "Anleitung" (shown as „Rule 0“): the Rule-0 text from the deck check, printable as one sheet
 // ============================================================================================
 let rule0For = null;
 let rule0 = null;
@@ -2049,46 +1577,7 @@ $("#rule0-show").addEventListener("click", () => {
 $("#rule0-full-close").addEventListener("click", () => $("#rule0-full").close());
 $("#sheet-print").addEventListener("click", () => window.print());
 
-const bullets = (items, refs) => items?.length ? md(items.map((x) => "- " + x).join("\n"), refs) : '<p class="muted small">–</p>';
-function renderGuide(d) {
-  const g = d.guide;
-  $("#sheet-title").textContent = `${d.name} · ${d.commanders.join(" + ")}`;
-  $("#guide").hidden = !g;
-  $("#guide-empty").hidden = !!g;
-  $("#guide-btn span").textContent = g ? "Neu erstellen" : "Anleitung erstellen";
-  $("#guide-btn").classList.toggle("primary", !g);
-  if (!g) { $("#guide-meta").textContent = ""; return; }
-  const stale = g.version && d.version && g.version !== d.version;
-  $("#guide-meta").innerHTML = `Erstellt ${esc(fmtDate(g.created))} für v${esc(g.version)}`
-    + (stale ? ` · <span class="guide-note">Das Deck hat sich seitdem geändert (jetzt v${esc(d.version)}).</span>` : "");
-  const refs = g.cards || {};
-  const section = (title, items) => `<div><h3>${esc(title)}</h3>${bullets(items, refs)}</div>`;
-  $("#guide").innerHTML = `${md(g.plan, refs).replace("<p>", '<p class="plan">')}
-    <div class="guide-cols">${section("Früh (Zug 1–3)", g.early)}${section("Mitte", g.mid)}${section("Spät", g.late)}</div>
-    <div class="guide-cols two">${section("Starthand behalten?", g.mulligan)}${section("So gewinnst du", g.win_conditions)}</div>
-    <div class="key-block"><h3>Schlüsselkarten</h3><ul class="key-cards">${(g.key_cards || []).map((k) =>
-      `<li>${cardRef(k.name, { [k.name]: { image: k.image } })} – ${esc(k.why)}</li>`).join("")}</ul></div>
-    <div class="guide-cols two">${section("Worauf achten", g.watch_out)}${section("Tipps", g.tips)}</div>`;
-}
-function onGuide(guide, slug) {
-  if (currentDeck?.slug !== slug) return;
-  currentDeck.guide = guide;
-  renderGuide(currentDeck);
-  toast("Die Anleitung ist fertig.");
-}
-$("#guide-btn").addEventListener("click", async () => {
-  if (!currentDeck || currentJob) return;
-  const { slug, name } = currentDeck;
-  if (currentDeck.guide && !(await ask({ title: "Anleitung neu erstellen?", text: "Die bisherige Anleitung wird ersetzt.", ok: "Neu erstellen" }))) return;
-  try {
-    const { job } = await api(`/api/decks/${enc(slug)}/guide`, { method: "POST", body: {} });
-    startJob(job, `Claude schreibt die Anleitung für ${name}`, { kind: "guide", slug, slot: "#guide-job-slot", route: `#/deck/${enc(slug)}/anleitung` });
-  } catch (err) { fail(err); }
-});
-$("#guide").addEventListener("click", (e) => {
-  const ref = e.target.closest(".card-ref");
-  if (ref) showCardView(ref.dataset.name, { image: ref.dataset.img, image_back: ref.dataset.imgBack, scryfall_uri: ref.dataset.uri });
-});
+function renderSheetTitle(d) { $("#sheet-title").textContent = `${d.name} · ${d.commanders.join(" + ")}`; }
 
 // ============================================================================================
 // tab "Partien": game log, record and "learn from your games"
@@ -2115,6 +1604,7 @@ function renderGames(slug, data) {
   const st = data.stats;
   $("#game-count").textContent = st.games || "";
   $("#game-learn").hidden = !data.learn_focus;
+  $("#game-learn").textContent = data.learn_focus ? `${data.learn_focus}.` : "";
   const pct = st.win_rate === null ? "–" : `${Math.round(st.win_rate * 100)} %`;
   const maxIssue = Math.max(1, ...st.issues.map((i) => i.count));
   $("#game-stats").innerHTML = !st.games ? '<p class="empty-inline">Die Bilanz erscheint nach der ersten Partie.</p>' : `
@@ -2195,76 +1685,6 @@ $("#game-list").addEventListener("click", async (e) => {
   try { renderGames(slug, await api(`/api/decks/${enc(slug)}/games/${enc(b.closest("li").dataset.id)}`, { method: "DELETE" })); }
   catch (err) { fail(err); }
 });
-$("#game-learn").addEventListener("click", () => {
-  if (!gameData?.learn_focus) return;
-  selectTab("anpassen");
-  showTune("upgrades");
-  const f = $("#upgrade-form");
-  f.elements.focus.value = gameData.learn_focus;
-  f.scrollIntoView({ behavior: "smooth", block: "center" });
-  $("#upgrade-btn").focus({ preventScroll: true });
-  toast("Fokus aus deinen Partien eingetragen – „Vorschläge holen“ startet die Suche.");
-});
-
-// ============================================================================================
-// answers from Claude: a small Markdown subset with card and deck references (shared by „Frag Claude“)
-// ============================================================================================
-function cardRef(name, refs) {
-  const r = refs[name] || currentDeck?.card_data?.[name] || {};
-  return `<span class="card card-ref" data-img="${esc(r.image || "")}" data-img-back="${esc(r.image_back || "")}"
-    data-name="${esc(name)}" data-uri="${esc(r.scryfall_uri || "")}">${esc(name)}</span>`;
-}
-
-// Small Markdown subset for answers: headings, lists, tables, bold/italic/code, [[Card]] refs.
-// Everything is escaped first; only the tags generated here end up in the HTML.
-function md(text, refs = {}, decks = {}) {
-  const names = [], slugs = [];
-  const raw = String(text || "").replace(/\[\[([^\[\]]+)\]\]/g, (_, n) => `\u0001${names.push(n.trim()) - 1}\u0001`)
-    .replace(/\{\{([a-z0-9][a-z0-9-]*)\}\}/g, (_, sl) => `\u0002${slugs.push(sl) - 1}\u0002`);
-  const inline = (s) => s
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[\s(„])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,:;!?“]|$)/g, "$1<em>$2</em>");
-  let html = "", para = [], list = null, table = [];
-  const flushPara = () => { if (para.length) html += `<p>${inline(para.join(" "))}</p>`; para = []; };
-  const flushList = () => { if (list) html += `</${list}>`; list = null; };
-  const flushTable = () => {
-    if (!table.length) return;
-    const rows = table.filter((r) => !/^\|[\s:|-]+\|$/.test(r))
-      .map((r) => r.slice(1, -1).split("|").map((c) => inline(c.trim())));
-    html += "<table>" + rows.map((cells, i) => {
-      const tag = i === 0 && table.length > 1 && /^\|[\s:|-]+\|$/.test(table[1]) ? "th" : "td";
-      return `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
-    }).join("") + "</table>";
-    table = [];
-  };
-  for (const line of esc(raw).split(/\r?\n/)) {
-    const t = line.trim();
-    if (/^\|.*\|$/.test(t)) { flushPara(); flushList(); table.push(t); continue; }
-    flushTable();
-    let m;
-    if (!t) { flushPara(); flushList(); }
-    else if ((m = t.match(/^#{1,6}\s+(.*)$/))) { flushPara(); flushList(); html += `<h4>${inline(m[1])}</h4>`; }
-    else if (/^([-*_])\1{2,}$/.test(t)) { flushPara(); flushList(); html += "<hr>"; }
-    else if ((m = t.match(/^(?:[-*+•]|(\d+)[.)])\s+(.*)$/))) {
-      flushPara();
-      const kind = m[1] ? "ol" : "ul";
-      if (list !== kind) { flushList(); html += `<${kind}>`; list = kind; }
-      html += `<li>${inline(m[2])}</li>`;
-    }
-    else if ((m = t.match(/^&gt;\s?(.*)$/))) { flushPara(); flushList(); html += `<p><em>${inline(m[1])}</em></p>`; }
-    else { flushList(); para.push(t); }
-  }
-  flushPara(); flushList(); flushTable();
-  return html.replace(/\u0001(\d+)\u0001/g, (_, i) => cardRef(names[Number(i)], refs))
-    .replace(/\u0002(\d+)\u0002/g, (_, i) => deckRef(slugs[Number(i)], decks));
-}
-
-// {{slug}} in answers: a link to the saved deck (its name), plain text when the deck is gone
-function deckRef(slug, decks = {}) {
-  const d = decks[slug] || deckIndex.find((x) => x.slug === slug);
-  return d ? `<a class="deck-ref" href="#/deck/${enc(slug)}">${esc(d.name)}</a>` : esc(slug);
-}
 
 // ============================================================================================
 // tab "Verlauf": versions, diffs, restore, copy
@@ -2294,7 +1714,7 @@ async function renderHistory(d) {
       ${h.restorable ? `<button type="button" class="btn small ghost" data-act="copy" data-v="${h.version}">Als neues Deck</button>` : ""}
       ${h.restorable ? `<button type="button" class="btn small ghost" data-act="text" data-v="${h.version}">Liste kopieren</button>` : ""}
     </div>` : ""}
-  </li>`).join("") : '<li class="empty-inline">Noch keine Versionen – jede Änderung durch Claude legt eine an.</li>';
+  </li>`).join("") : '<li class="empty-inline">Noch keine Versionen – jede gespeicherte Änderung legt eine an.</li>';
   const opts = versions.filter((h) => h.restorable).map((h) => `<option value="${h.version}">v${h.version}${h.current ? " (aktuell)" : ""}</option>`).join("");
   const form = $("#compare-form").elements;
   form.a.innerHTML = opts;
@@ -3194,7 +2614,7 @@ async function refreshBlacklist() {
   $("#bl-rules").innerHTML = bl.rules.map((r) => `<li>
       <div class="bl-rule-main">
         <strong>${esc(r.label)}</strong>
-        <span class="pill ${r.checked ? "ok" : "accent"}">${r.checked ? "wird geprüft" : "Hinweis für Claude"}</span>
+        <span class="pill ${r.checked ? "ok" : "accent"}">${r.checked ? "wird geprüft" : "Notiz"}</span>
         <p class="muted small">${esc(r.description)}</p>
         ${r.cards ? `<details class="more"><summary>${r.cards.length} Karten</summary><p class="small">${r.cards.map(esc).join(" · ")}</p></details>` : ""}
       </div>
@@ -3213,7 +2633,7 @@ async function addToBlacklist(add) {
   $("#bl-msg").textContent = parts.length ? `Hinzugefügt – ${parts.join(" · ")}` : "";
   for (const term of r.not_found) {
     const ok = await ask({ title: `„${term}“ nicht gefunden`, ok: "Als Begriff speichern",
-      text: "Das ist weder eine Karte noch ein bekannter Begriff. Als freien Begriff speichern? Claude beachtet ihn beim Bauen, automatisch geprüft wird er nicht." });
+      text: "Das ist weder eine Karte noch ein bekannter Begriff. Als Notiz für dich speichern? Automatisch geprüft wird sie nicht." });
     if (ok) await api("/api/blacklist", { method: "POST", body: { add: [`@${term}`] } }).catch(fail);
   }
   await refreshBlacklist();
@@ -3262,12 +2682,6 @@ async function refreshOpponents() {
   oppIndex = data.opponents;
   oppTags = data.tags;
   $("#opp-count").textContent = oppIndex.length || "";
-  const sel = $("#upgrade-opp");
-  const keep = sel.value;
-  sel.innerHTML = '<option value="">alle meine Gegner berücksichtigen</option>'
-    + oppIndex.map((o) => `<option value="${esc(o.id)}">${esc(o.title)}</option>`).join("");
-  sel.value = oppIndex.some((o) => o.id === keep) ? keep : "";
-  $(".upgrade-opp").hidden = !oppIndex.length;
 }
 
 function oppMeta(o) {
@@ -3277,77 +2691,6 @@ function oppMeta(o) {
     ...o.tag_labels].filter(Boolean).join(" · ");
 }
 
-// "Neues Deck" → "Gegen meine Runde bauen": which opponent decks the build targets
-let metaResult = null;  // last meta suggestions {created, analysis, suggestions, sources, research, …}
-let metaPick = null;    // the suggestion chosen for building
-let metaLoaded = false;
-
-function renderMetaSuggestions(result) {
-  metaResult = result && result.suggestions?.length ? result : null;
-  $("#meta-suggestions").hidden = !metaResult || buildForm.dataset.mode !== "meta";
-  if (!metaResult) return;
-  const r = metaResult;
-  $("#meta-meta").textContent = `vom ${fmtDate(r.created)} · Opus 5.5, extra hoher Denkaufwand · ${r.research ? "mit" : "ohne"} Web-Recherche`;
-  $("#meta-analysis").textContent = r.analysis || "";
-  $("#meta-analysis").hidden = !r.analysis;
-  $("#meta-list").innerHTML = r.suggestions.map((s, i) => {
-    const colors = (s.color_identity || []).map((c) => COLOR_NAMES[c] || c).join(", ") || "Farblos";
-    return `<article class="suggestion">
-      ${s.image ? `<img src="${esc(s.image)}" alt="${esc(s.name)}" loading="lazy">` : ""}
-      <h3>${i + 1}. ${esc(s.name)}${s.partner ? " + " + esc(s.partner) : ""}</h3>
-      <p class="muted small">${esc(s.archetype || "")} · ${esc(colors)}</p>
-      ${s.difficulty ? `<span class="difficulty ${esc(s.difficulty)}" title="${esc(s.difficulty_note || "")}">${esc(s.difficulty[0].toUpperCase() + s.difficulty.slice(1))} zu spielen</span>` : ""}
-      <p><span class="why-label">Warum gegen deine Runde?</span> ${esc(s.why || "")}</p>
-      ${s.win_plan ? `<p><span class="label">So gewinnt es:</span> ${esc(s.win_plan)}</p>` : ""}
-      ${s.matchups?.length ? `<details class="more"><summary>Gegen deine Gegner</summary><ul>${s.matchups.map((m) =>
-        `<li><strong>${esc(m.opponent)}:</strong> ${esc(m.plan)}</li>`).join("")}</ul></details>` : ""}
-      ${s.key_cards?.length ? `<div class="key-cards" aria-label="Schlüsselkarten">${s.key_cards.map((c) => `<span>${esc(c)}</span>`).join("")}</div>` : ""}
-      ${s.risks ? `<p class="muted small">Schwäche: ${esc(s.risks)}</p>` : ""}
-      ${s.bracket_fit ? `<p class="muted small">${esc(s.bracket_fit)}</p>` : ""}
-      <div class="actions">
-        <button type="button" class="btn" data-meta-use="${i}">Übernehmen</button>
-        <button type="button" class="btn primary" data-meta-build="${i}">Dieses Deck bauen</button>
-      </div>
-    </article>`;
-  }).join("");
-  const src = r.sources || [];
-  $("#meta-sources-box").hidden = !src.length;
-  $("#meta-sources").innerHTML = src.map((u) => /^https?:\/\//.test(u)
-    ? `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></li>` : `<li>${esc(u)}</li>`).join("");
-  if (!$("#meta-suggestions").hidden && jobInfo?.kind === "meta") $("#meta-suggestions").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-$("#meta-list").addEventListener("click", (e) => {
-  const btn = e.target.closest("button[data-meta-use], button[data-meta-build]");
-  if (!btn || !metaResult) return;
-  const s = metaResult.suggestions[Number(btn.dataset.metaUse ?? btn.dataset.metaBuild)];
-  metaPick = s;
-  buildForm.elements.meta_action.value = "build";
-  buildForm.dataset.metaAction = "build";
-  buildForm.elements.meta_commander.value = s.name;
-  if (s.strategy) buildForm.elements.strategy.value = s.strategy;
-  if (btn.dataset.metaBuild !== undefined) buildForm.requestSubmit();
-  else {
-    buildForm.scrollIntoView({ behavior: "smooth", block: "start" });
-    toast(`${s.name} übernommen – prüf noch Bracket, Tischregel und Budget, dann „Stärkstes Deck bauen lassen“.`);
-  }
-});
-
-async function renderMetaBox() {
-  if (!metaLoaded) {
-    metaLoaded = true;
-    api("/api/build-meta/suggestions").then((r) => { if (!metaResult) renderMetaSuggestions(r); }).catch(() => {});
-  }
-  await refreshOpponents();
-  const keep = new Set($$("#meta-opps input").filter((c) => !c.checked).map((c) => c.value));
-  $("#meta-empty").hidden = !!oppIndex.length;
-  $("#meta-opps-head").hidden = !oppIndex.length;
-  $("#meta-opps").innerHTML = oppIndex.map((o) => `<label title="${esc(oppMeta(o))}"><input type="checkbox" name="meta_opps" value="${esc(o.id)}"${keep.has(o.id) ? "" : " checked"}><span>${esc(o.title)}</span></label>`).join("");
-  const games = oppIndex.reduce((n, o) => n + o.record.games, 0);
-  $("#meta-summary").textContent = oppIndex.length
-    ? `${deckIndex.length} eigene${deckIndex.length === 1 ? "s Deck" : " Decks"} · ${oppIndex.length} Gegnerdeck${oppIndex.length === 1 ? "" : "s"} · ${games} festgehaltene Partie${games === 1 ? "" : "n"} gegen sie`
-    : "";
-}
-$("#meta-all").addEventListener("click", () => { for (const cb of $$("#meta-opps input")) cb.checked = true; });
 
 // game form: quick picks of known opponents fill the next empty slot
 function renderKnownOpps() {
@@ -3420,11 +2763,6 @@ function renderOpponent() {
   $("#opp-games").innerHTML = r.history.map((g) => `<li>
       <div class="when"><span class="res ${esc(g.result)}">${esc(labels[g.result] || g.result)}</span><br><span class="meta">${esc(fmtDate(g.played))}</span></div>
       <div>mit <a href="#/deck/${enc(g.deck_slug)}/partien">${esc(g.deck)}</a>${g.turn ? ` · Zug ${esc(g.turn)}` : ""}${g.note ? `<br><span class="meta">${esc(g.note)}</span>` : ""}</div><span></span></li>`).join("");
-  const mine = $("#opp-my-deck");
-  const faced = r.per_deck[0]?.slug;
-  mine.innerHTML = deckIndex.map((d) => `<option value="${esc(d.slug)}">${esc(d.name)}</option>`).join("") || '<option value="">– noch keine Decks –</option>';
-  if (faced && deckIndex.some((d) => d.slug === faced)) mine.value = faced;
-  $("#opp-ask").disabled = $("#opp-upgrade").disabled = !deckIndex.length;
 }
 
 async function patchOpp(body, msg = "") {
@@ -3478,30 +2816,6 @@ $("#opp-delete").addEventListener("click", async () => {
     go("#/opponents");
   } catch (err) { fail(err); }
 });
-$("#opp-ask").addEventListener("click", () => {
-  const slug = $("#opp-my-deck").value;
-  if (!slug) return;
-  const o = currentOpp;
-  askClaudeAbout(deckIndex.find((d) => d.slug === slug) || { slug, name: slug },
-    `Wie spiele ich mit diesem Deck gegen ${o.title}? Worauf muss ich achten, welche Karten halte ich zurück, was ist ihre Schwachstelle?`
-    + (o.notes.length ? ` Mir ist aufgefallen: ${o.notes.slice(-3).map((n) => n.text).join("; ")}.` : ""));
-  toast("Frage vorbereitet – „Fragen“ schickt sie an Claude.");
-});
-$("#opp-upgrade").addEventListener("click", async () => {
-  const slug = $("#opp-my-deck").value;
-  if (!slug) return;
-  const id = currentOpp.id;
-  go(`#/deck/${enc(slug)}/anpassen`);
-  await new Promise((r) => setTimeout(r, 50));
-  if (currentDeck?.slug !== slug && !(await openDeck(slug))) return;
-  showTune("upgrades");
-  $("#upgrade-opp").value = id;
-  const f = $("#upgrade-form");
-  f.scrollIntoView({ behavior: "smooth", block: "center" });
-  $("#upgrade-btn").focus({ preventScroll: true });
-  toast("Gegner eingetragen – „Vorschläge holen“ startet die Suche.");
-});
-
 // ============================================================================================
 // table rules ("Tischregeln"): rule sets per playgroup, chosen per deck
 // ============================================================================================
@@ -3514,39 +2828,10 @@ async function refreshTableRules() {
   tableSets = data.sets;
   tableCatalog = data.catalog;
   $("#tr-count").textContent = tableSets.length || "";
-  const opts = (sel) => '<option value="">Keine Tischregel</option>'
-    + tableSets.map((t) => `<option value="${esc(t.id)}"${t.id === sel ? " selected" : ""}>${esc(t.name)}</option>`).join("");
-  const build = $("#build-table");
-  build.innerHTML = opts(build.value);
-  updateBuildTableHint();
   if (currentDeck) renderDeckTable(currentDeck);
 }
 
 function tableById(id) { return tableSets.find((t) => t.id === id) || null; }
-
-function updateBuildTableHint() {
-  const t = tableById($("#build-table").value);
-  const hint = $("#build-table-hint");
-  hint.hidden = !t;
-  if (!t) return;
-  const notes = [];
-  const bracket = Number(new FormData(buildForm).get("bracket"));
-  if (t.max_bracket && bracket > t.max_bracket) notes.push(`<strong>Höchstens Bracket ${t.max_bracket}</strong> – stell das Bracket oben niedriger.`);
-  if (t.no_proxies && $("#proxy").checked) notes.push("<strong>Keine Proxies</strong> an diesem Tisch – schalte „Proxy-Deck“ aus.");
-  hint.innerHTML = (notes.length ? `<span class="warn-text">${notes.join(" ")}</span><br>` : "")
-    + (t.summary.length ? esc(t.summary.join(" · ")) : "Diese Tischregel ist noch leer.");
-}
-$("#build-table").addEventListener("change", updateBuildTableHint);
-$("#build-table").addEventListener("change", () => {  // meta build: the opponents of that table, if any are assigned
-  if (buildForm.dataset.mode !== "meta") return;
-  const id = $("#build-table").value;
-  const atTable = oppIndex.filter((o) => id && o.table_rule === id).map((o) => o.id);
-  if (!atTable.length) return;
-  for (const cb of $$("#meta-opps input")) cb.checked = atTable.includes(cb.value);
-  toast(`Gegner der Runde „${tableById(id).name}“ ausgewählt.`);
-});
-$("#bracket-options").addEventListener("change", updateBuildTableHint);
-$("#proxy").addEventListener("change", updateBuildTableHint);
 
 function renderDeckTable(d) {
   const sel = $("#deck-table");
@@ -3567,7 +2852,7 @@ function renderDeckTable(d) {
     ${(t.warnings || []).map((w) => `<p class="muted small">${esc(w)}</p>`).join("")}
     <p class="muted small">${esc((t.summary || []).join(" · "))}</p>
     <div class="btn-row">
-      ${bad.length ? `<button type="button" class="btn" id="deck-table-fix">${icon("spark")}Claude soll das Deck anpassen</button>` : ""}
+      ${bad.length ? `<button type="button" class="btn" id="deck-table-fix">${icon("edit")}Karten bearbeiten</button>` : ""}
       <a class="link small" href="#/tables/${enc(id)}">Tischregel bearbeiten</a>
     </div>`;
 }
@@ -3584,11 +2869,8 @@ $("#deck-table").addEventListener("change", async (e) => {
 });
 $("#deck-table-status").addEventListener("click", (e) => {
   if (!e.target.closest("#deck-table-fix")) return;
-  const t = currentDeck.validation?.table_rule;
-  showTune("refine");
-  const form = $("#refine-form");
-  form.elements.request.value = `Halte die Tischregel „${t.name}“ ein: ${(t.violations || []).map((v) => v.split(": ").slice(1).join(": ")).join("; ")}`;
-  form.requestSubmit();
+  selectTab("karten");
+  if (!edit) setEditing(true);
 });
 
 async function showTables(id) {
@@ -3675,7 +2957,7 @@ async function addToTable(add) {
   $("#tr-msg").textContent = parts.length ? `Hinzugefügt – ${parts.join(" · ")}` : "";
   for (const term of r.not_found || []) {
     const ok = await ask({ title: `„${term}“ nicht gefunden`, ok: "Als Absprache speichern",
-      text: "Das ist weder eine Karte noch ein bekannter Begriff. Als freie Absprache speichern? Claude hält sich beim Bauen daran, automatisch geprüft wird sie nicht." });
+      text: "Das ist weder eine Karte noch ein bekannter Begriff. Als freie Absprache speichern? Automatisch geprüft wird sie nicht." });
     if (ok) await patchTable({ add: [`@${term}`] }).catch(fail);
   }
 }
@@ -3821,7 +3103,7 @@ $("#trash-list").addEventListener("click", async (e) => {
   if (back) { restoreFromTrash(back.dataset.trashRestore); return; }
   const purge = e.target.closest("button[data-trash-purge]");
   if (!purge) return;
-  if (!(await ask({ title: "Endgültig löschen?", text: "Das Deck mit Versionen, Fragen und Partien ist danach weg (außer in einer Sicherung).", ok: "Endgültig löschen", danger: true }))) return;
+  if (!(await ask({ title: "Endgültig löschen?", text: "Das Deck mit Versionen und Partien ist danach weg (außer in einer Sicherung).", ok: "Endgültig löschen", danger: true }))) return;
   try { await api(`/api/trash/${enc(purge.dataset.trashPurge)}`, { method: "DELETE" }); refreshTrash(); } catch (err) { fail(err); }
 });
 $("#trash-empty").addEventListener("click", async () => {
@@ -3892,13 +3174,6 @@ function renderSync() {
     + (st.pending_revalidation?.length ? ` <span class="muted">${st.pending_revalidation.length === 1 ? "Ein zusammengeführtes Deck wird" : `${st.pending_revalidation.length} zusammengeführte Decks werden`} noch geprüft (braucht Internet).</span>` : "");
   $("#sync-interval").value = String(st.interval);
   if (![...$("#sync-interval").options].some((o) => o.selected)) $("#sync-interval").value = "5";
-  $("#sync-phone-questions").checked = !!st.phone_questions;
-  const ph = st.phone || {};
-  const phoneLine = ph.current ? `Beantwortet gerade eine Frage vom Handy: „${ph.current.question}“`
-    : ph.error && st.phone_questions ? `Fragen vom Handy: ${ph.error}`
-    : ph.answered ? `${ph.answered === 1 ? "Eine Frage" : `${ph.answered} Fragen`} vom Handy beantwortet, seit die App läuft.` : "";
-  $("#sync-phone-line").textContent = phoneLine;
-  $("#sync-phone-line").hidden = !phoneLine;
   $("#sync-conflict-count").textContent = st.conflicts || "";
   $("#sync-details").textContent = `Server: ${d.server} · Gerät: ${d.name} (${d.device_id}) · verbunden seit ${fmtDate(new Date(d.paired_at * 1000).toISOString())}`;
 }
@@ -3974,14 +3249,6 @@ $("#sync-interval").addEventListener("change", async (e) => {
   } catch (err) { fail(err); }
 });
 
-$("#sync-phone-questions").addEventListener("change", async (e) => {
-  try {
-    await api("/api/settings", { method: "POST", body: { phone_questions: e.target.checked } });
-    toast(e.target.checked ? "Dieser PC beantwortet jetzt Fragen aus der Handy-App." : "Dieser PC beantwortet keine Fragen vom Handy mehr – sie warten, bis ein PC sie übernimmt.");
-    refreshSync({ quiet: true });
-  } catch (err) { fail(err); e.target.checked = !e.target.checked; }
-});
-
 $("#sync-pair").addEventListener("click", async () => {
   try {
     const p = await api("/api/sync/pair", { method: "POST" });
@@ -4014,11 +3281,10 @@ async function refreshSyncDevices() {
   const kinds = { pc: "PC", phone: "Handy", other: "Gerät" };
   $("#sync-device-count").textContent = data.devices.length || "";
   $("#sync-devices").innerHTML = data.devices.map((d) => {
-    const ai = d.info?.ai;
     const state = d.online ? '<span class="ok">online</span>' : `zuletzt ${esc(fmtAgo(d.last_seen))}`;
     return `<li>
       <div class="grow"><strong>${esc(d.name)}</strong> <span class="muted small">· ${kinds[d.kind] || "Gerät"}${d.this ? " · dieses Gerät" : ""}
-        · ${state}${ai && d.online ? ` · Claude ${ai.ready ? "bereit" : "nicht bereit"}` : ""}</span></div>
+        · ${state}</span></div>
       ${d.this ? "" : `<div class="actions"><button type="button" class="btn ghost small" data-sync-revoke="${esc(d.id)}" data-name="${esc(d.name)}">Abmelden …</button></div>`}
     </li>`;
   }).join("") || '<li class="muted small">Keine Geräte.</li>';
@@ -4358,7 +3624,7 @@ $("#order-items").addEventListener("click", async (e) => {
   } catch (err) { fail(err); }
 });
 
-// "In eine Sammelbestellung packen?" – after a rebuild, from upgrades, a plan stage or the deck menu
+// "In eine Sammelbestellung packen?" – after saving card edits, from the deck menu or the card view
 function orderDialog({ title, text, body, missingToggle = false, qtyField = false }) {
   return refreshOrders().then(() => new Promise((resolve) => {
     const dlg = $("#order-dialog"), sel = $("#order-dialog-target");
@@ -4511,12 +3777,6 @@ $("#order-from-deck").addEventListener("click", () => {
   orderDialog({ title: "Deck drucken", text: `Karten aus „${currentDeck.name}“ (${total} insgesamt) in eine Sammelbestellung packen.`,
     body: { deck: currentDeck.slug }, missingToggle: true });
 });
-$("#upgrade-order").addEventListener("click", () => {
-  const sel = selectedUpgrades();
-  if (!sel.length || !currentDeck) return;
-  orderDialog({ title: "Upgrades drucken", text: `${sel.length} neue Karten (${sel.map((u) => u.add).join(", ")}) drucken – ohne sie schon ins Deck zu übernehmen.`,
-    body: { items: sel.map((u) => ({ kind: "card", name: u.add, qty: 1, source: `Upgrades ${currentDeck.name}`, source_slug: currentDeck.slug })) } });
-});
 refreshOrders();
 
 // ============================================================================================
@@ -4557,236 +3817,13 @@ loadGlossary().catch(() => {});  // the quick search lists glossary terms too
 // ============================================================================================
 let paletteHits = [];
 let paletteSel = 0;
-// ============================================================================================
-// „Frag Claude“: chat with the whole app (read-only Claude runs, conversations in decks/.chats)
-// ============================================================================================
-let chatIndex = [];
-let currentChat = null;  // { id, title, messages } – null = a new, not yet started conversation
-let chatRun = null;      // { job, chatId, question, source, status, error, answered, finished }
-let chatFocus = null;    // { slug, name } – the deck the questions are about („Claude fragen“ in a deck)
-
-function setChatFocus(deck) {
-  chatFocus = deck?.slug ? { slug: deck.slug, name: deck.name || deck.slug } : null;
-  $("#chat-focus").hidden = !chatFocus;
-  $("#chat-focus-name").textContent = chatFocus?.name || "";
-  $("#chat-form textarea").placeholder = chatFocus ? `z. B. Wie gewinnt ${chatFocus.name}? Wie spiele ich es gegen Atraxa?` : "z. B. Was ist mein stärkstes Deck und warum?";
-}
-const deckNameOf = (slug) => deckIndex.find((d) => d.slug === slug)?.name || slug;
-
-/** „Claude fragen“ from a deck, a card or an opponent: a new conversation about ``deck`` (optionally with a
- *  question, sent right away). The chat prompt then loads the deck first and minds its table rule and opponents. */
-function askClaudeAbout(deck, question = "", { send = false } = {}) {
-  if (location.hash !== "#/chat") go("#/chat");
-  currentChat = null;
-  setChatFocus(deck);
-  renderChat();
-  const box = $("#chat-form textarea");
-  box.value = question;
-  if (send && question && !(chatRun && !chatRun.finished)) $("#chat-form").requestSubmit();
-  else setTimeout(() => box.focus({ preventScroll: true }), 150);  // after the route change moved the focus to the page
-}
-
-async function refreshChats() {
-  chatIndex = await api("/api/chats").catch(() => chatIndex);
-  renderChatList();
-}
-
-function renderChatList() {
-  const cur = currentChat?.id;
-  $("#chat-list").innerHTML = chatIndex.map((c) => `<li><a href="#/chat/${enc(c.id)}"${c.id === cur ? ' aria-current="page"' : ""}>
-    ${esc(c.title || "Gespräch")}<span class="muted">${esc(fmtDate(c.updated))} · ${c.count} ${c.count === 1 ? "Frage" : "Fragen"}</span></a></li>`).join("");
-  $("#chat-list-empty").hidden = chatIndex.length > 0;
-}
-
-const chatQuestion = (q, id = "", phone = false, deck = null) => `<div class="chat-msg user"${id ? ` id="${id}"` : ""}>${esc(q)}${phone ? '<span class="chat-from">vom Handy</span>' : ""}${deck ? `<span class="chat-from">zu „${esc(deckNameOf(deck))}“</span>` : ""}</div>`;
-function chatAnswer(m) {
-  if (!m.answer) {  // a question from the phone that this or another PC has not answered (yet)
-    const text = m.status === "failed" ? `Hat nicht geklappt: ${m.error || "keine Antwort"}`
-      : "Wartet auf Antwort – ein PC mit „Fragen vom Handy beantworten“ beantwortet sie, sobald er läuft.";
-    return `<p class="chat-msg ai chat-open${m.status === "failed" ? " failed" : ""}" data-id="${esc(m.id)}">${esc(text)}</p>`;
-  }
-  const decks = Object.entries(m.decks || {});
-  return `<article class="chat-msg ai" data-id="${esc(m.id)}">
-    <div class="qa-a" tabindex="0" role="region" aria-label="Antwort von Claude">${md(m.answer, m.cards || {}, m.decks || {})}</div>
-    <div class="chat-foot">${decks.map(([slug, d]) => `<a class="btn small ghost" href="#/deck/${enc(slug)}">${esc(d.name)} öffnen</a>`).join("")}
-      <span class="meta">${esc(fmtDate(m.asked))}${m.deep ? " · gründlich" : ""}</span></div></article>`;
-}
-
-function renderChat() {
-  const c = currentChat;
-  $("#chat-title").textContent = c ? c.title : "Neues Gespräch";
-  $("#chat-menu").hidden = !c?.messages?.length;
-  $("#chat-log").innerHTML = (c?.messages || []).map((m) => chatQuestion(m.question, "", m.source === "phone", m.deck) + chatAnswer(m)).join("");
-  renderChatList();
-  updateChatLive();
-}
-
-function updateChatLive() {
-  const run = chatRun;
-  const here = !!(run && currentChat && currentChat.id === run.chatId);
-  $("#chat-pending")?.remove();
-  if (here && !run.answered) $("#chat-log").insertAdjacentHTML("beforeend", chatQuestion(run.question, "chat-pending", false, run.deck));
-  $("#chat-live").hidden = !here;
-  $("#chat-live .spinner").hidden = !!run?.finished;
-  $("#chat-status").textContent = run?.error ? "Fehler: " + run.error : run?.status || "Claude sieht sich deine Decks an …";
-  $("#chat-cancel").textContent = run?.finished ? "Schließen" : "Abbrechen";
-  const busy = !!(run && !run.finished);
-  $("#chat-btn").disabled = busy || !aiState.available;
-  $("#chat-btn").title = busy ? "Claude antwortet noch" : "";
-  $("#chat-running").hidden = !busy;
-  $("#chat-start").hidden = !!(currentChat?.messages?.length || here);
-  $("#chat-nodecks").hidden = deckIndex.length > 0;
-}
-
-function onChatEvent(run, ev) {
-  switch (ev.type) {
-    case "tool": run.status = toolText(ev.name); break;
-    case "status": run.status = ev.text; break;
-    case "error": run.error = ev.text; break;
-    case "answer": {
-      run.answered = true;
-      const here = currentChat?.id === ev.chat_id;
-      const seen = here && parseHash().view === "chat";
-      if (here) {  // keep the open conversation current, even while another page is shown
-        currentChat.messages.push(ev.entry);
-        $("#chat-pending")?.remove();
-        $("#chat-log").insertAdjacentHTML("beforeend", chatQuestion(ev.entry.question) + chatAnswer(ev.entry));
-        $("#chat-menu").hidden = false;
-        if (seen) $("#chat-log").lastElementChild.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-      if (!seen) toast(`Claude hat geantwortet: „${ev.entry.question.slice(0, 60)}“`, "info", 8000, { label: "Ansehen", run: () => go(`#/chat/${enc(ev.chat_id)}`) });
-      refreshChats();
-      break;
-    }
-    case "done":
-      run.source.close();
-      run.finished = true;
-      if (ev.ok) chatRun = null;
-      else {
-        run.error ||= "Keine Antwort erhalten.";
-        if (currentChat?.id === run.chatId && !currentChat.messages.length) {  // the empty new conversation was dropped
-          currentChat = null;
-          run.chatId = null;
-          history.replaceState(null, "", "#/chat");
-          const box = $("#chat-form textarea");
-          if (!box.value) box.value = run.question;
-          toast(run.error, "error");
-          chatRun = null;
-          renderChat();
-        }
-        refreshChats();
-      }
-      break;
-  }
-  updateChatLive();
-}
-
-async function showChat(id) {
-  if (!id) currentChat = null;
-  else if (currentChat?.id !== id) {
-    try { currentChat = await api(`/api/chats/${enc(id)}`); }
-    catch (err) { fail(err); currentChat = null; history.replaceState(null, "", "#/chat"); }
-    const last = currentChat?.messages?.[currentChat.messages.length - 1];  // follow-ups keep the deck focus
-    setChatFocus(last?.deck ? { slug: last.deck, name: deckNameOf(last.deck) } : null);
-  }
-  renderChat();
-  refreshChats();
-  if (matchMedia("(min-width: 901px)").matches && !(chatRun && !chatRun.finished)) $("#chat-form textarea").focus({ preventScroll: true });
-}
-
-$("#chat-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (chatRun && !chatRun.finished) return;
-  const box = e.target.elements.question;
-  const question = box.value.trim();
-  if (question.length < 2) return;
-  try {
-    const r = await api("/api/chat", { method: "POST", body: { question, chat_id: currentChat?.id || null, deep: $("#chat-deep").checked, deck: chatFocus?.slug || null } });
-    if (!currentChat) {
-      currentChat = { id: r.chat_id, title: r.title, messages: [] };
-      history.replaceState(null, "", `#/chat/${enc(r.chat_id)}`);
-      lastView = "chat" + r.chat_id;
-    }
-    const run = { job: r.job, chatId: r.chat_id, question, deck: chatFocus?.slug || null };
-    run.source = jobStream(r.job, (ev) => onChatEvent(run, ev), (lost) => {
-      if (lost && !run.finished) { onChatEvent(run, { type: "error", text: lost }); onChatEvent(run, { type: "done", ok: false }); }
-    });
-    chatRun = run;
-    box.value = "";
-    renderChat();
-    $("#chat-pending")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    refreshChats();
-  } catch (err) { fail(err); }
-});
-$("#chat-form textarea").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#chat-form").requestSubmit(); }
-});
-$("#chat-chips").addEventListener("click", (e) => {
-  const chip = e.target.closest(".chip");
-  if (!chip || (chatRun && !chatRun.finished)) return;
-  $("#chat-form textarea").value = chip.dataset.q;
-  $("#chat-form").requestSubmit();
-});
-$("#chat-cancel").addEventListener("click", async () => {
-  if (!chatRun) return;
-  if (!chatRun.finished) await api(`/api/jobs/${chatRun.job}/cancel`, { method: "POST" }).catch(() => {});
-  else { chatRun = null; updateChatLive(); }
-});
-$("#chat-new").addEventListener("click", () => {
-  setChatFocus(null);
-  if (location.hash === "#/chat") { currentChat = null; renderChat(); } else go("#/chat");
-  $("#chat-form textarea").focus();
-});
-$("#chat-focus-x").addEventListener("click", () => { setChatFocus(null); $("#chat-form textarea").focus(); });
-$("#chat-log").addEventListener("click", (e) => {
-  const ref = e.target.closest(".card-ref");
-  if (ref) showCardView(ref.dataset.name, { image: ref.dataset.img, image_back: ref.dataset.imgBack, scryfall_uri: ref.dataset.uri });
-});
-$("#chat-rename").addEventListener("click", async () => {
-  $("#chat-menu").open = false;
-  if (!currentChat) return;
-  const title = await ask({ title: "Gespräch umbenennen", value: currentChat.title, ok: "Speichern" });
-  if (!title) return;
-  try {
-    const r = await api(`/api/chats/${enc(currentChat.id)}`, { method: "PUT", body: { title } });
-    currentChat.title = r.title;
-    $("#chat-title").textContent = r.title;
-    refreshChats();
-  } catch (err) { fail(err); }
-});
-$("#chat-copy").addEventListener("click", async () => {
-  $("#chat-menu").open = false;
-  if (!currentChat) return;
-  const text = currentChat.messages.filter((m) => m.answer).map((m) => `Frage: ${m.question}\n\n${m.answer.replace(/\{\{([a-z0-9-]+)\}\}/g, (_, sl) => (m.decks?.[sl]?.name || sl)).replace(/\[\[([^\]]+)\]\]/g, "$1")}`).join("\n\n---\n\n");
-  try { await navigator.clipboard.writeText(text); toast("Gespräch kopiert."); }
-  catch { toast("Kopieren nicht möglich – der Browser erlaubt keinen Zugriff auf die Zwischenablage.", "error"); }
-});
-$("#chat-delete").addEventListener("click", async () => {
-  $("#chat-menu").open = false;
-  if (!currentChat) return;
-  if (!(await ask({ title: "Gespräch löschen?", text: `„${currentChat.title}“ mit allen Fragen und Antworten wird gelöscht.`, ok: "Löschen", danger: true }))) return;
-  try {
-    await api(`/api/chats/${enc(currentChat.id)}`, { method: "DELETE" });
-    currentChat = null;
-    toast("Gespräch gelöscht.");
-    go("#/chat");
-    refreshChats();
-  } catch (err) { fail(err); }
-});
-refreshChats();
-
 function paletteItems() {
   const items = [
-    { label: "Neues Deck", hint: "Seite · Strg+N", run: () => { go("#/new"); setMode("build"); } },
-    { label: "Frag Claude", hint: "Chat mit der ganzen App · Strg+J", run: () => go("#/chat") },
-    { label: "Neues Gespräch mit Claude", hint: "Frag Claude", run: () => { go("#/chat"); $("#chat-new").click(); } },
-    ...chatIndex.map((c) => ({ label: c.title, hint: "Gespräch", run: () => go(`#/chat/${enc(c.id)}`) })),
-    { label: "Commander vorschlagen lassen", hint: "Neues Deck", run: () => { go("#/new"); setMode("find"); } },
-    { label: "Stärkstes Deck gegen meine Runde bauen", hint: "Neues Deck", run: () => { go("#/new"); setMode("meta"); } },
-    { label: "Deck per Link importieren", hint: "Moxfield, Archidekt, …", run: () => { go("#/new"); setMode("import"); setImportMode("link"); $("#import-url").focus(); } },
-    { label: "Deckliste einfügen", hint: "Neues Deck", run: () => { go("#/new"); setMode("import"); setImportMode("text"); $("#import-text").focus(); } },
-    { label: "Leeres Deck anlegen", hint: "Neues Deck · Karten von scryfall.com hereinziehen", run: () => { go("#/new"); setMode("import"); setImportMode("manual"); $("#manual-cmd").focus(); } },
-    { label: "Starterdeck (Precon) importieren", hint: "Neues Deck", run: () => { go("#/new"); setMode("import"); setImportMode("precon"); } },
+    { label: "Neues Deck", hint: "Seite · Strg+N", run: () => go("#/new") },
+    { label: "Leeres Deck anlegen", hint: "Neues Deck · Karten von scryfall.com hereinziehen", run: () => { go("#/new"); setImportMode("manual"); $("#manual-cmd").focus(); } },
+    { label: "Deck per Link importieren", hint: "Moxfield, Archidekt, …", run: () => { go("#/new"); setImportMode("link"); $("#import-url").focus(); } },
+    { label: "Deckliste einfügen", hint: "Neues Deck", run: () => { go("#/new"); setImportMode("text"); $("#import-text").focus(); } },
+    { label: "Starterdeck (Precon) importieren", hint: "Neues Deck", run: () => { go("#/new"); setImportMode("precon"); } },
     { label: "Meine Sammlung", hint: "Seite", run: () => go("#/collection") },
     { label: "Karte zur Sammlung hinzufügen", hint: "Sammlung", run: () => { go("#/collection"); openCollAdd(); } },
     { label: "Sammlung importieren", hint: "Sammlung", run: () => { go("#/collection"); $("#coll-import-btn").click(); } },
@@ -4803,9 +3840,8 @@ function paletteItems() {
   ];
   if (currentDeck && parseHash().view === "deck") {
     const d = currentDeck;
-    const tabNames = { karten: "Karten", anleitung: "Anleitung & Rule 0", testen: "Testhand & Wahrscheinlichkeiten", anpassen: "Anpassen & Upgrades", partien: "Partien & Bilanz", verlauf: "Verlauf", drucken: "Drucken" };
+    const tabNames = { karten: "Karten", anleitung: "Rule 0", testen: "Testhand & Wahrscheinlichkeiten", anpassen: "Tischregel & Ziel-Stärke", partien: "Partien & Bilanz", verlauf: "Verlauf", drucken: "Drucken" };
     for (const [tab, label] of Object.entries(tabNames)) items.push({ label, hint: d.name, run: () => selectTab(tab) });
-    items.push({ label: "Claude zu diesem Deck fragen", hint: d.name, run: () => askClaudeAbout(d) });
     items.push({ label: "Karten bearbeiten", hint: d.name, run: () => { selectTab("karten"); if (!edit) setEditing(true); } });
     items.push({ label: "Liste kopieren", hint: d.name, run: () => $("#copy-btn").click() });
     items.push({ label: "Mit anderem Deck vergleichen", hint: d.name, run: () => openDeckCompare() });
@@ -4864,8 +3900,7 @@ document.addEventListener("keydown", (e) => {
   if (mod && !e.shiftKey && !e.altKey) {
     const k = e.key.toLowerCase();
     if (k === "k") { e.preventDefault(); openPalette(); }
-    else if (k === "n") { e.preventDefault(); go("#/new"); setMode("build"); }
-    else if (k === "j") { e.preventDefault(); go("#/chat"); }
+    else if (k === "n") { e.preventDefault(); go("#/new"); }
     else if (k === ",") { e.preventDefault(); go("#/settings"); }
     else if (k === "s" && edit) { e.preventDefault(); $("#edit-save").click(); }
   } else if (e.key === "?" && !mod && !isTyping(e) && !document.querySelector("dialog[open]")) { e.preventDefault(); openShortcuts(); }
@@ -4943,17 +3978,13 @@ if (/Mac|iPhone|iPad/.test(navigator.platform)) $("#palette-btn kbd").textConten
 // ============================================================================================
 // start
 // ============================================================================================
-wireAutocomplete($("#commander"), $("#ac-commander"), previewCommander);
-wireAutocomplete($("#partner"), $("#ac-partner"));
 wireAutocomplete($("#bl-input"), $("#ac-bl"));
 wireAutocomplete($("#tr-input"), $("#ac-tr"));
 wireAutocomplete($("#opp-new [name=commander]"), $("#ac-opp-new"));
-wireAutocomplete(buildForm.elements.meta_commander, $("#ac-meta-commander"));
 wireAutocomplete($("#opp-form [name=commander]"), $("#ac-opp-edit"));
 wireAutocomplete($("#opp-form [name=partner]"), $("#ac-opp-partner"));
-setMode("build");
 refreshBlacklist();
 loadSettings().catch((err) => console.error(err));
-Promise.all([initBrackets(), refreshDeckList(), refreshCollectionSummary(), refreshTableRules(), refreshOpponents(), refreshAi(true)]).then(route, (err) => { fail(err); route(); });
+Promise.all([initBrackets(), refreshDeckList(), refreshCollectionSummary(), refreshTableRules(), refreshOpponents()]).then(route, (err) => { fail(err); route(); });
 refreshSync({ quiet: true });
 setTimeout(refreshDesktop, 20000);  // the desktop shell polls the backend a few seconds after the start

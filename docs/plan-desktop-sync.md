@@ -11,7 +11,6 @@ offline. Später am PC ist alles da.
 | Sync-Server | eigener kleiner Server (Python, derselbe Code), als **ein Docker-Container** bei **Hetzner Cloud** in Deutschland (Nürnberg/Falkenstein) |
 | Handy | **PWA** (Web-App auf dem Homescreen), kein App Store |
 | Desktop | **nur Windows**, **Tauri 2** mit dem Python-Backend als mitgeliefertem Hintergrundprozess |
-| KI auf dem Handy | als **Auftrag an den PC**; das Handy zeigt, ob der PC gerade erreichbar ist und ob Claude dort bereit ist |
 | Neu am Tisch | **Gegnerdeck schnell anlegen** (Commander, Spieler, Merkmale, Notiz) – auch offline |
 
 ## Grundprinzip: lokal zuerst
@@ -28,7 +27,8 @@ Jede Datei ist ein **Dokument** mit einem logischen Pfad (dieselben Namen wie in
 |---|---|---|
 | `decks/<slug>.json` | Deck | eigene Regel (siehe unten) |
 | `decks/.versions/<slug>/vNNNN.json` | Versions-Schnappschuss | unveränderlich; bei Nummernkollision neu nummeriert |
-| `decks/.games/<slug>.json`, `decks/.questions/<slug>.json`, `decks/.opponents.json`, `decks/.chats/<id>.json`, `decks/.meta-suggestions.json` | JSON | allgemeine Regel |
+| `decks/.games/<slug>.json`, `decks/.opponents.json` | JSON | allgemeine Regel |
+| `decks/.chats/<id>.json`, `decks/.meta-suggestions.json` | JSON | allgemeine Regel; alte Gespräche und Vorschläge aus früheren Versionen, werden nicht mehr angezeigt |
 | `collection.json`, `tablerules.json` | JSON | allgemeine Regel |
 | `blacklist.txt` | Text | Zeilen als Menge |
 | `proxies/.orders/<id>.json`, `proxies/<slug>/selection.json`, `proxies/<slug>/tokens.json`, `proxies/<slug>/uploads/index.json` | JSON | allgemeine Regel |
@@ -69,15 +69,12 @@ fremde Fassung verglichen:
   - Bilder reisen vorerst als Base64 im selben Aufruf (einzeln bis 64 MB); inhaltsadressierte Blobs folgen, falls nötig.
   - Wiederherstellen einer Server-Sicherung (`mtg-sync-server restore`) setzt eine neue „Epoche“: Die Geräte führen
     danach alles neu zusammen, ohne anderswo etwas zu löschen.
-- Für das Handy zusätzlich **fachliche Aufrufe** (Partie eintragen, Gegnerdeck anlegen, Notiz, Frage an den PC);
+- Für das Handy zusätzlich **fachliche Aufrufe** (Partie eintragen, Gegnerdeck anlegen, Notiz);
   der Server führt sie mit derselben Zusammenführ-Logik aus.
 - **Geräte-Anmeldung per QR-Code**: der PC erzeugt einen Kopplungscode, das Handy scannt ihn und bekommt ein
   eigenes Token. Geräte lassen sich einzeln abmelden. Nur HTTPS.
-- **Anwesenheit**: die Desktop-App meldet sich jede Minute („PC online, Claude bereit/nicht bereit“). Das Handy
+- **Anwesenheit**: die Desktop-App meldet sich jede Minute („PC online“). Das Handy
   zeigt daraus „PC erreichbar“ oder „PC zuletzt vor 3 Std.“.
-- **KI-Aufträge**: Fragen vom Handy werden als Dokumente `requests/<id>.json` gespeichert. Die Desktop-App holt
-  offene Aufträge ab, sobald sie läuft und Claude bereit ist, beantwortet sie (wie
-  „Frag Claude“) und schreibt die Antwort zurück; das Handy zeigt den Status (wartet auf PC · in Arbeit · fertig).
 
 ### Betrieb bei Hetzner
 
@@ -100,9 +97,8 @@ fremde Fassung verglichen:
 - **Gegnerdeck schnell anlegen**: Commander mit Autovervollständigung (Scryfall direkt vom Handy; offline als
   Freitext, wird später aufgelöst), Spieler, Merkmale per Schnellwahl (Combo, Board Wipes, schnell …), Notiz –
   in wenigen Sekunden, ohne die Partie zu verlassen.
-- Decks ansehen: Rule-0-Text, Anleitung, Kartenliste mit Bildern, Bilanz.
+- Decks ansehen: Rule-0-Text, Kartenliste mit Bildern, Bilanz.
 - Karten nachschlagen (Kartentext auf Deutsch), in der Sammlung nachsehen.
-- **Frag Claude** als Auftrag an den PC, mit Anzeige „PC erreichbar / Claude bereit“.
 
 ## Desktop-App (Tauri 2, Windows)
 
@@ -119,64 +115,12 @@ fremde Fassung verglichen:
 | **1 – Sync-Kern** ✅ | logische Pfade, Basis-Speicher, Drei-Wege-Zusammenführung, Deck-Regel mit Neunummerierung, Konfliktprotokoll, Server-Speicher (SQLite) als Bibliothek | zwei Datenordner gleichen sich über den Speicher ab; Tests für alle Konfliktfälle |
 | **2 – Sync-Server** ✅ | HTTP-Schicht, Geräte-Token und QR-Kopplung, Anwesenheit, Docker-Image, Compose-Datei, Anleitung Hetzner; Seite „Sync“ in den Einstellungen (Status, jetzt synchronisieren, Konflikte, Geräte) | PC ↔ Server ↔ zweiter PC im Alltag |
 | **3 – Handy-PWA** ✅ | „Am Tisch“: Partie eintragen, Gegnerdeck schnell anlegen, Decks/Rule 0 ansehen, Karten nachschlagen; Offline-Warteschlange | Partie offline am Tisch eingetragen, später am PC sichtbar |
-| **4 – KI-Aufträge** ✅ | Aufträge vom Handy, Abarbeitung am PC, Statusanzeige | Frage vom Handy wird vom PC beantwortet |
-| **5 – Desktop-App** | Tauri-Hülle, Sidecar, Infobereich, Installer, Auto-Update | Windows-Installer aus GitHub Actions |
-
-## Phase 4 im Detail: „Frag Claude“ vom Handy
-
-**Ablauf.** Die Frage ist ein Auftrag mit Kennung. Der Server ist die Drehscheibe, der PC arbeitet ihn ab.
-
-1. Das Handy schickt die Operation `chat.ask` (Gespräch, Frage, „Gründlich“) über die Warteschlange, also auch
-   offline. Der Server schreibt die Frage als offene Nachricht in das Gespräch `decks/.chats/<id>.json`. So
-   steht sie am PC unter „Frag Claude“, und das Handy zeigt sie sofort. Zusätzlich legt der Server einen Auftrag an.
-2. Der PC wartet über eine offene Leitung auf Aufträge (`POST /api/jobs/claim`, bis 25 s). Ein neuer Auftrag kommt
-   ohne Verzögerung an, ein ruhender PC kostet nichts. Der PC holt sich nur Aufträge, wenn Claude bereit ist und
-   „Fragen vom Handy beantworten“ an ist (Einstellung, Standard: an).
-3. Der PC beantwortet die Frage mit dem gleichen App-Chat wie am PC (nur lesen, Übersicht über alles, bisheriges
-   Gespräch als Zusammenhang). Unterwegs meldet er, was Claude gerade tut („liest Kartentexte“). Das ist zugleich
-   das Lebenszeichen: Bleibt es länger als `JOB_LEASE` aus, gibt der Server den Auftrag wieder frei.
-4. Der PC schickt die Antwort an den Server (`POST /api/jobs/<id>/finish`). Der Server trägt sie ins Gespräch ein
-   und ist damit der einzige, der Antworten auf Handy-Fragen schreibt. Danach gleicht der PC ab, und das Gespräch
-   steht auch dort.
-5. Das Handy fragt, solange eine Frage offen ist, alle paar Sekunden den Stand ab und lädt die Antwort, sobald sie
-   da ist.
-
-**Was das Handy zeigt** (ehrlich, wie Zustellstatus in Messengern):
-- „Wird gesendet, sobald Netz da ist“, solange die Frage noch auf dem Handy wartet;
-- „Wartet auf deinen PC“, wenn kein PC erreichbar ist (die Frage bleibt liegen, bis er läuft);
-- „Claude liest Kartentexte …“ während der Arbeit;
-- die Antwort, Kartennamen und Decks darin antippbar;
-- „Hat nicht geklappt“ mit Grund und „Nochmal fragen“.
-
-Offene Fragen lassen sich zurückziehen. Ein Punkt am Tab zeigt neue Antworten. Es gibt keine Benachrichtigungen,
-wie in der Handy-App überall.
-
-**Bedienung.** Ein fünfter Tab „Claude“ zeigt die Gespräche und den Stand des PCs. Neue Fragen und Nachfragen
-schreibt man in ein Sheet; das folgt der Tastatur, wie die anderen Sheets auch. Vorschläge als Chips helfen beim
-Einstieg, zum Beispiel „Wie spiele ich {Deck} gegen {letzter Gegner}?“ oder „Regelfrage: …“. Vom Deck aus führt
-„Claude fragen“ in eine Frage zu diesem Deck.
-
-**Grenzen.** Pro Handy sind höchstens 10 offene Fragen erlaubt. Das Handy liest die letzten 30 Gespräche, auch
-offline.
-
-**Stand.** Phase 4 ist umgesetzt. Getestet sind:
-- die Operationen;
-- die Server-Routen (sofortiges Wecken eines wartenden PCs, Freigabe nach Funkstille, Zurückziehen während der
-  Arbeit, Grenze offener Fragen);
-- der PC mit nachgestelltem Claude gegen einen echten Server-Ablauf.
-
-Im Browser geprüft sind die Vorschau (hell und dunkel, Tippflächen, kein seitliches Scrollen) und der Ablauf mit
-echtem Server und nachgestelltem PC:
-- Zwischenstand und Antwort mit Links;
-- Nachfrage offline;
-- Punkt am Tab;
-- Zurückziehen;
-- „PC beantwortet keine Fragen“.
+| **4 – Desktop-App** | Tauri-Hülle, Sidecar, Infobereich, Installer, Auto-Update | Windows-Installer aus GitHub Actions |
 
 ## Risiken und offene Punkte
 
 - **Zusammenführen ist der kritische Teil** – deshalb Phase 1 zuerst und mit vielen Tests.
-- Gleichzeitige Schreibzugriffe von GUI, MCP-Server und Sync auf demselben Rechner: der Sync schreibt nur unter
+- Gleichzeitige Schreibzugriffe von GUI und Sync auf demselben Rechner: der Sync schreibt nur unter
   denselben Dateisperren und überspringt Dateien, die sich während des Abgleichs geändert haben.
 - Bilder können groß werden (eigene Druckbilder); Speicherplatz auf dem Server im Blick behalten.
 - Die Desktop-Oberfläche lädt nach einem Abgleich die geänderten Ansichten neu (Hinweis „Neu vom Handy: 1 Partie“).

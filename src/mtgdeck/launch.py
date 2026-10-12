@@ -5,7 +5,6 @@ time), then the server starts::
 
     mtg-gui                                  # http://127.0.0.1:8765, data in the repository folder
     mtg-gui --data D:\\Decks --port 0 --token auto   # the desktop app: free port, access token, own data folder
-    mtgdeck-backend mcp                      # the MCP server over stdio (what Claude Code talks to)
 
 With ``--port 0`` the chosen address is printed as one line ``MTGDECK_URL=http://127.0.0.1:<port>/?token=<token>``
 so the desktop shell can open it. With a token every request needs it (cookie set by that first link, or
@@ -22,7 +21,7 @@ import sys
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mtg-gui", description="Commander-Deckbuilder: lokale Oberfläche")
-    p.add_argument("command", nargs="?", choices=["serve", "mcp"], default="serve", help="serve (Standard) oder mcp (MCP-Server auf stdio)")
+    p.add_argument("command", nargs="?", choices=["serve"], default="serve", help="serve (Standard)")
     p.add_argument("--data", metavar="ORDNER", help="Datenordner (Decks, Sammlung, Einstellungen …); Standard: Projektordner bzw. %%APPDATA%%")
     p.add_argument("--cache", metavar="ORDNER", help="Ordner für Kartendatenbank und HTTP-Cache")
     p.add_argument("--host", help="Adresse (Standard 127.0.0.1)")
@@ -48,11 +47,6 @@ def apply(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     apply(args)
-    if args.command == "mcp":
-        from .mcp_server import main as mcp_main
-
-        mcp_main()
-        return
     from .gui.app import serve
 
     serve()

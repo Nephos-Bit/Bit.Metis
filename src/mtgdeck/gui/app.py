@@ -1,5 +1,5 @@
-"""Local web GUI. Builds decks by running Claude Code (Claude Agent SDK) with the project's
-skills and the 'mtg' MCP server, and shows saved decks with images, stats and bracket check.
+"""Local web GUI: decks with images, stats and bracket check, the deck editor, games, opponents, the
+collection, printing and sync.
 
 Start: ``uv run mtg-gui`` -> http://127.0.0.1:8765
 """
@@ -28,16 +28,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .. import opponents as opponents_mod
-from .. import overview
-from ..jsonstore import ConflictError, StoreError, write_json
-from .. import backup, blacklist, brackets, chat, carddb, collection, deckedit, deckimport, dropcards, importers, games, glossary, health, opponents, precons, printorders, proxy, rule0, scryfall, storage, tablerules
+from ..jsonstore import ConflictError, StoreError
+from .. import backup, blacklist, brackets, carddb, collection, deckedit, deckimport, dropcards, importers, games, glossary, health, precons, printorders, proxy, rule0, scryfall, storage, tablerules
 from .. import paths
 from .. import settings as settings_mod
 from ..cards import card_text, deck_tokens, resolve
 from ..deck import DeckEntry, to_text
-from ..fmt import money as fmt_money
 from ..http import HttpError
-from ..power import TIER_LABELS, PowerProfile, target_value
+from ..power import TIER_LABELS, PowerProfile
 from ..sync import service as sync_service
 from ..sync.remote import RemoteError
 from . import desktop, terminal
@@ -46,7 +44,6 @@ log = logging.getLogger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 PROJECT_ROOT = storage.PROJECT_ROOT
-AGENT_ROOT = paths.agent_root()  # where Claude runs: its .claude/skills and CLAUDE.md (the repo, or the bundled agent/ folder)
 GUI_TOKEN = os.environ.get("MTG_GUI_TOKEN", "")  # set by the desktop shell: every request must carry it (cookie or Bearer)
 TOKEN_COOKIE = "mtg_token"
 VERSION = "0.1.5"
@@ -54,14 +51,8 @@ VERSION = "0.1.5"
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    try:
-        moved = await asyncio.to_thread(chat.migrate_questions)  # the former „Fragen zum Deck“ become conversations
-        if moved:
-            log.info("%d Frage-Verläufe nach „Frag Claude“ übernommen", moved)
-    except Exception:
-        log.exception("Deck-Fragen übernehmen")
     auto = os.environ.get("MTG_SYNC_AUTO", "1") != "0"
-    tasks = [asyncio.create_task(_sync_loop()), asyncio.create_task(_phone_loop())] if auto else []
+    tasks = [asyncio.create_task(_sync_loop())] if auto else []
     try:
         yield
     finally:
@@ -149,7 +140,7 @@ def _error_text(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-# --- jobs: one Claude Code run each -------------------------------------------------------------
+# --- jobs: long tasks (printing, MPC Autofill, card database) with events for the browser -------------------------------------------------------------
 
 
 @dataclass
@@ -180,7 +171,7 @@ class Job:
         self.done = True
         self.ended = time.time()
         self.changed.set()
-        _mark_dirty()  # a job may have saved something (via its own MCP server): sync soon
+        _mark_dirty()  # a job may have saved something: sync soon
 
 
 JOBS: dict[str, Job] = {}
@@ -215,139 +206,6 @@ def _start_runner(runner: Any) -> dict[str, str]:
     return _register(job, runner(job))
 
 
-def _tool_summary(name: str, args: dict[str, Any]) -> str:
-    for key in ("query", "commander", "name", "names", "tags", "url", "slug", "skill"):
-        if key in args and args[key]:
-            val = args[key]
-            if isinstance(val, list):
-                val = ", ".join(map(str, val[:5])) + (" …" if len(val) > 5 else "")
-            return f"{key}={val}"
-    return ""
-
-
-# Tools for questions about a deck: research only, nothing that saves or changes anything.
-READ_ONLY_TOOLS = ["app_overview", "search_cards", "local_card_search", "get_cards", "find_commanders", "game_changers",
-                   "card_db_status", "edhrec_recommendations", "edhrec_average_deck", "find_combos",
-                   "bracket_rules", "validate_deck", "get_blacklist", "table_rules", "opponent_decks", "list_decks", "load_deck", "deck_games",
-                   "list_deck_versions", "compare_deck_versions", "compare_decks", "export_deck", "import_deck", "search_precons", "print_orders",
-                   "similar_cards", "collection_search", "collection_status"]  # fmt: skip
-WRITE_TOOLS = ["save_deck", "update_blacklist", "update_table_rule", "update_opponent_deck", "restore_deck_version", "copy_deck", "update_card_database",
-               "create_proxy_order", "export_proxy_pdf", "launch_proxy_tool", "proxy_settings",
-               "edit_deck", "update_collection", "import_precon", "update_print_order"]  # fmt: skip
-Finish = Callable[[Job, bool, str, Any], Awaitable[None]]
-
-
-async def _run_claude(
-    job: Job,
-    prompt: str,
-    model: str | None,
-    output_format: dict[str, Any] | None = None,
-    *,
-    read_only: bool = False,
-    finish: Finish | None = None,
-    table_rule: str | None = None,
-    extras: dict[str, Any] | None = None,
-    effort: str | None = None,
-    web: bool = False,
-) -> None:
-    """Run Claude Code on ``prompt``. ``read_only`` restricts the mtg tools to research;
-    ``finish(job, ok, final_text, structured_output)`` replaces the default end (detect the saved deck)."""
-    try:
-        from claude_agent_sdk import (
-            AssistantMessage,
-            ClaudeAgentOptions,
-            ResultMessage,
-            TextBlock,
-            ToolUseBlock,
-            query,
-        )
-    except ImportError:
-        job.emit(type="error", text="Das KI-Paket fehlt (claude-agent-sdk): `uv sync --extra gui` ausführen.")
-        job.emit(type="done", ok=False)
-        return
-
-    base_tools = ["Skill", "ToolSearch", "Read", "Glob", "Grep"] + (["WebSearch", "WebFetch"] if web else [])
-    mcp_cmd = _mcp_command()
-    cli = _find_claude_cli()
-    options = ClaudeAgentOptions(
-        cwd=str(AGENT_ROOT),
-        setting_sources=["project"],  # loads .claude/skills and CLAUDE.md from AGENT_ROOT
-        cli_path=cli,
-        mcp_servers={"mtg": {"type": "stdio", "command": mcp_cmd[0], "args": mcp_cmd[1:],
-                             "env": {**os.environ, "MTG_JOB_ID": job.id}}},  # decks saved by this job carry last_job
-        strict_mcp_config=True,
-        allowed_tools=base_tools + ([f"mcp__mtg__{t}" for t in READ_ONLY_TOOLS] if read_only else ["mcp__mtg"]),
-        disallowed_tools=(["Write", "Edit", "Bash"] + [f"mcp__mtg__{t}" for t in WRITE_TOOLS]) if read_only else [],
-        permission_mode="dontAsk",
-        model=model or None,
-        effort=effort,
-        max_turns=int(os.environ.get("MTG_MAX_TURNS", 120)),
-        output_format=output_format,
-    )
-    ok = False
-    structured: Any = None
-    final_text = ""
-    last_text = ""
-    job.emit(type="status", text="Starte Claude Code …")
-    try:
-        async for msg in query(prompt=prompt, options=options):
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if isinstance(block, TextBlock) and block.text.strip():
-                        last_text = block.text.strip()
-                        job.emit(type="text", text=last_text)
-                    elif isinstance(block, ToolUseBlock) and block.name == "StructuredOutput":
-                        job.emit(type="status", text="Übergebe Ergebnis …")
-                    elif isinstance(block, ToolUseBlock):
-                        name = block.name.removeprefix("mcp__mtg__")
-                        job.emit(type="tool", name=name, summary=_tool_summary(name, block.input or {}))
-            elif isinstance(msg, ResultMessage):
-                ok = not msg.is_error
-                if ok:
-                    _ai_failure.clear()
-                structured = msg.structured_output
-                final_text = (msg.result or "").strip() or last_text
-                cost = f" · Kosten {fmt_money(msg.total_cost_usd, 'usd')}" if getattr(msg, "total_cost_usd", None) else ""
-                job.emit(type="result", text=f"{'Fertig' if ok else 'Abgebrochen'} nach {msg.num_turns} Schritten{cost}")
-    except asyncio.CancelledError:
-        job.emit(type="error", text="Abgebrochen.")
-    except Exception as exc:  # surface everything in the UI
-        _note_ai_failure(exc)
-        job.emit(type="error", text=_error_text(exc) + (" – Claude Code ist nicht bereit: installiert und angemeldet? "
-                 "Ohne KI kannst du weiter drucken, importieren und bearbeiten." if _ai_failure else ""))
-
-    if finish is not None:
-        await finish(job, ok, final_text, structured)
-        return
-
-    if output_format is not None:  # commander finder: structured suggestions instead of a deck
-        suggestions = await _enrich_suggestions(structured) if ok else []
-        if suggestions:
-            job.emit(type="suggestions", items=suggestions)
-        elif ok:
-            job.emit(type="error", text="Keine verwertbaren Vorschläge erhalten.")
-        job.emit(type="done", ok=bool(suggestions), deck=None)
-        return
-
-    decks = storage.list_decks()
-    deck = next((d for d in decks if d.get("last_job") == job.id), None)  # saved by this job's MCP server
-    if deck is None and not any(d.get("last_job") for d in decks if (d.get("updated") or "") >= _iso(job.started)):
-        deck = next((d for d in decks if (d.get("updated") or "") >= _iso(job.started)), None)  # older MCP server
-    for key, value in (extras or {}).items() if deck else []:  # e.g. which opponents a meta build targeted
-        try:
-            storage.set_extra(deck["slug"], key, value)
-        except (FileNotFoundError, ValueError):
-            pass
-    if deck and table_rule and deck.get("table_rule") != table_rule:  # Claude forgot to pass it on
-        try:
-            await _set_table_rule(deck["slug"], table_rule)
-        except Exception as exc:
-            job.emit(type="error", text=f"Tischregel konnte nicht gesetzt werden: {exc}")
-    if deck:
-        desktop.notify("Deck fertig", f"„{deck.get('name') or deck['slug']}“ ist gespeichert.")
-    job.emit(type="done", ok=ok and deck is not None, deck=deck["slug"] if deck else None)
-
-
 async def _set_table_rule(slug: str, rule_id: str | None, note: str = "") -> dict[str, Any]:
     """Give a saved deck a table rule (or none), re-validate and save it as a new version."""
     for attempt in range(3):
@@ -373,566 +231,6 @@ async def _set_table_rule_once(slug: str, rule_id: str | None, note: str) -> dic
     return deck
 
 
-def _deck_table_lines(deck: dict[str, Any]) -> list[str]:
-    return tablerules.prompt_lines(tablerules.get(deck.get("table_rule")))
-
-
-def _iso(ts: float) -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(ts - 1))
-
-
-# --- is Claude there? Everything without AI (printing, collection, import, editing …) works regardless ---------
-
-_ai_failure: dict[str, Any] = {}  # the last run that failed because Claude Code itself was missing/not logged in
-_AI_SETUP_HINTS = ("not found", "nicht gefunden", "login", "log in", "logged in", "authenticat", "api key", "api_key",
-                   "credit balance", "unauthorized", "401", "claude code")  # fmt: skip
-
-
-def _mcp_command() -> list[str]:
-    """How a Claude job starts the mtg MCP server: the packaged backend runs itself with ``mcp``."""
-    return [sys.executable, "mcp"] if paths.frozen() else [sys.executable, "-m", "mtgdeck.mcp_server"]
-
-
-def _find_claude_cli() -> str | None:
-    import shutil
-
-    bundled = paths.bundled_cli()
-    return str(bundled) if bundled else shutil.which("claude")
-
-
-_auth_cache: dict[str, Any] = {}  # {"logged_in": bool | None, "method": str | None, "at": float}
-AUTH_CACHE_SECONDS = 600
-_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)  # Windows: no console flashing up for the CLI
-
-
-def _cli_auth_status(cli: str) -> dict[str, Any]:
-    """``claude auth status --json`` → ``{logged_in, method}``; ``logged_in`` is None when it cannot be told."""
-    try:
-        out = subprocess.run([cli, "auth", "status", "--json"], capture_output=True, text=True, timeout=20,
-                             stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)  # fmt: skip
-        data = json.loads(out.stdout or "{}")
-        return {"logged_in": bool(data.get("loggedIn")), "method": data.get("authMethod")}
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return {"logged_in": None, "method": None}
-
-
-def _auth_status(refresh: bool = False) -> dict[str, Any]:
-    """Whether the Claude CLI is signed in, cached for a while (starting the CLI costs about a second)."""
-    now = time.time()
-    if not refresh and _auth_cache and now - _auth_cache["at"] < AUTH_CACHE_SECONDS:
-        return _auth_cache
-    cli = _find_claude_cli()
-    result = {**(_cli_auth_status(cli) if cli else {"logged_in": None, "method": None}), "at": now}
-    _auth_cache.clear()
-    _auth_cache.update(result)
-    return _auth_cache
-
-
-def ai_status() -> dict[str, Any]:
-    """``{enabled, available, reason}`` – reason is a German sentence when AI features cannot run."""
-    enabled = bool(settings_mod.load().get("ai_enabled", True))
-    if not enabled:
-        return {"enabled": False, "available": False, "reason": "KI-Funktionen sind in den Einstellungen ausgeschaltet."}
-    try:
-        import claude_agent_sdk  # noqa: F401
-    except ImportError:
-        return {"enabled": True, "available": False,
-                "reason": "Das KI-Paket fehlt (claude-agent-sdk) – `uv sync --extra gui` ausführen."}  # fmt: skip
-    if not _find_claude_cli():
-        return {"enabled": True, "available": False,
-                "reason": "Claude Code wurde nicht gefunden – installieren (claude.ai/code) und einmal `claude` zum Anmelden starten."}  # fmt: skip
-    if _auth_cache.get("logged_in") is False:  # known from the last check; GET /api/ai refreshes it
-        return {"enabled": True, "available": False,
-                "reason": "Claude ist auf diesem Rechner noch nicht angemeldet – Einstellungen → „Bei Claude anmelden“."}  # fmt: skip
-    if _ai_failure:
-        return {"enabled": True, "available": True, "reason": None, "last_error": _ai_failure.get("text"),
-                "last_error_at": _ai_failure.get("at")}  # fmt: skip
-    return {"enabled": True, "available": True, "reason": None}
-
-
-def _require_ai() -> None:
-    st = ai_status()
-    if not st["available"]:
-        raise HTTPException(503, f"{st['reason']} Alles ohne KI – Drucken, Sammlung, Import, Bearbeiten – funktioniert weiter.")
-
-
-def _note_ai_failure(exc: BaseException) -> None:
-    text = f"{type(exc).__name__}: {exc}"
-    if type(exc).__name__ in ("CLINotFoundError", "CLIConnectionError") or any(h in text.lower() for h in _AI_SETUP_HINTS):
-        _ai_failure.update(text=text[:300], at=time.time())
-
-
-def _start(prompt: str, model: str | None, output_format: dict[str, Any] | None = None, **kw: Any) -> dict[str, str]:
-    _require_ai()
-    job = Job(id=uuid.uuid4().hex[:12])
-    return _register(job, _run_claude(job, prompt, model, output_format, **kw))
-
-
-class BuildRequest(BaseModel):
-    commander: str
-    partner: str | None = None
-    bracket: int = Field(3, ge=1, le=5)
-    budget: float | None = None
-    proxy: bool = False
-    currency: str = "eur"
-    strategy: str | None = None
-    notes: str | None = None
-    profile: PowerProfile | None = None
-    prefer_collection: bool = False
-    table_rule: str | None = None
-    model: str | None = None
-
-
-COLLECTION_LINE = (
-    "- Sammlung: Bevorzuge Karten, die der Nutzer schon besitzt – hol sie mit `collection_search` (Farbidentität "
-    "des Commanders) und nimm sie, wo sie gleich gut passen. Besessene Karten (echt oder Proxy) kosten nichts; beim "
-    "Budget zählen nur fehlende Karten. Nenne am Ende, wie viele Karten aus der Sammlung stammen (`collection_status`)."
-)
-
-
-def profile_lines(bracket: int, profile: PowerProfile | None) -> list[str]:
-    """Prompt lines for sub-tier, house rules and style; empty when nothing was chosen."""
-    if not profile or profile.is_empty():
-        return []
-    lines = []
-    if profile.tier:
-        lines.append(
-            f"- Feinstufe: {TIER_LABELS[profile.tier]} Bracket {bracket} (Power-Ziel ≈ {target_value(bracket, profile.tier):.1f})"
-        )
-    rules = []
-    if profile.max_game_changers is not None:
-        rules.append("keine Game Changer" if profile.max_game_changers == 0 else f"max. {profile.max_game_changers} Game Changer")
-    if profile.max_tutors is not None:
-        rules.append("keine Tutoren" if profile.max_tutors == 0 else f"max. {profile.max_tutors} Tutoren")
-    for flag, text in (
-        (profile.allow_two_card_combos, "2-Karten-Combos"),
-        (profile.allow_extra_turns, "Extra-Züge"),
-        (profile.allow_mass_land_denial, "Massen-Landzerstörung"),
-    ):
-        if flag is False:
-            rules.append(f"keine {text}")
-    if rules:
-        lines.append("- Hausregeln (strenger als das Bracket): " + "; ".join(rules))
-    if profile.style:
-        lines.append(f"- Stil/Vibe: {profile.style}")
-    if profile.notes:
-        lines.append(f"- Notizen zur Spielstärke: {profile.notes}")
-    lines.append(
-        "- Übergib dieses `power_profile` an `validate_deck` und `save_deck` und lies references/power-tuning.md: "
-        + profile.model_dump_json(exclude_defaults=True)
-    )
-    return lines
-
-
-def _budget_line(budget: float | None, proxy: bool, currency: str) -> str:
-    cur = currency.upper()
-    if proxy:
-        return (
-            "- Proxy: Ja – das Deck wird geproxt. Kartenpreise spielen keine Rolle, ignoriere jedes Budget "
-            f"und wähle die besten Karten für Bracket und Strategie (Preise nur informativ in {cur}). "
-            "Übergib `proxy=true` an `validate_deck` und `save_deck`."
-        )
-    if budget:
-        return f"- Budget: max. {budget:g} {cur} für das ganze Deck (übergib `budget` an `validate_deck`/`save_deck`)"
-    return f"- Budget: keins (Preise in {cur})"
-
-
-def build_prompt(req: BuildRequest) -> str:
-    b = brackets.BY_NUMBER[req.bracket]
-    lines = [
-        "Baue ein Commander-Deck. Nutze dafür den Skill `commander-deckbuilder`.",
-        "",
-        f"- Commander: {req.commander}",
-    ]
-    if req.partner:
-        lines.append(f"- Partner/Background: {req.partner}")
-    lines.append(f"- Bracket: {req.bracket} ({b['name']})")
-    lines.append(_budget_line(req.budget, req.proxy, req.currency))
-    lines.append(f"- Währung für Preise: {req.currency}")
-    lines += profile_lines(req.bracket, req.profile)
-    if req.strategy:
-        lines.append(f"- Strategie/Thema: {req.strategy}")
-    if req.notes:
-        lines.append(f"- Weitere Wünsche: {req.notes}")
-    if req.prefer_collection:
-        lines.append(COLLECTION_LINE)
-    lines += tablerules.prompt_lines(tablerules.get(req.table_rule))
-    if req.table_rule:  # the opponents of that table
-        lines += opponents_mod.prompt_lines({"table_rule": req.table_rule})
-    lines += [
-        "",
-        "Du läufst im GUI-Modus: Stelle keine Rückfragen, triff sinnvolle Annahmen und nenne sie in der Deckbeschreibung.",
-        "Karten und Regeln der Blacklist (`get_blacklist`) sind tabu.",
-        "Speichere das fertige Deck mit `save_deck` und behebe alle Fehler und Bracket-Verstöße, bevor du fertig bist.",
-        "Antworte auf Deutsch.",
-    ]
-    return "\n".join(lines)
-
-
-# --- meta build: the strongest deck against the user's playgroup ---------------------------------
-
-
-class MetaBuildRequest(BaseModel):
-    commander: str | None = None  # empty = Claude picks
-    partner: str | None = None
-    opponent_ids: list[str] = Field(default_factory=list)  # empty = all opponent decks
-    bracket: int = Field(3, ge=1, le=5)
-    budget: float | None = None
-    proxy: bool = False
-    currency: str = "eur"
-    strategy: str | None = None
-    notes: str | None = None
-    profile: PowerProfile | None = None
-    prefer_collection: bool = False
-    table_rule: str | None = None
-    model: str | None = None
-
-
-def _meta_context(req: MetaBuildRequest, *, free: bool) -> list[str]:
-    """The playgroup, the user's decks and the build options – shared by meta builds and meta suggestions."""
-    b = brackets.BY_NUMBER[req.bracket]
-    lines = [
-        "Die Gegnerdecks der Runde (nur Commander, Merkmale, Beobachtungen und Bilanz – keine Listen):",
-        *opponents_mod.meta_lines(req.opponent_ids),
-        "",
-        "Die eigenen Decks des Nutzers:",
-        *(opponents_mod.own_deck_lines() or ["  - noch keine"]),
-        "",
-        "Vorgaben:",
-        f"- Commander: {req.commander}" + (f" + {req.partner}" if req.partner else "") if not free else
-        "- Commander: frei wählbar – wähle den, der gegen genau diese Gegner am besten steht (Tempo, Interaktion, "
-        "Widerstandskraft) und der noch keinem eigenen Deck des Nutzers entspricht.",
-        f"- Bracket: {req.bracket} ({b['name']})",
-        _budget_line(req.budget, req.proxy, req.currency),
-        f"- Währung für Preise: {req.currency}",
-        *profile_lines(req.bracket, req.profile),
-        *tablerules.prompt_lines(tablerules.get(req.table_rule)),
-    ]
-    if req.strategy:
-        lines.append(f"- Strategie/Thema: {req.strategy}")
-    if req.notes:
-        lines.append(f"- Weitere Wünsche: {req.notes}")
-    if req.prefer_collection:
-        lines.append(COLLECTION_LINE)
-    return lines
-
-
-def meta_prompt(req: MetaBuildRequest) -> str:
-    free = not (req.commander or "").strip()
-    lines = [
-        "Baue das stärkste Commander-Deck gegen die Runde des Nutzers. Nutze den Skill `commander-deckbuilder` "
-        "(Abschnitt „Gegen die Runde bauen“)" + (" und für die Wahl des Commanders den Skill `commander-finder`." if free else "."),
-        "",
-        *_meta_context(req, free=free),
-    ]
-    lines += [
-        "",
-        "So gehst du vor:",
-        "1. Lies die Runde: Wie gewinnen die Gegner, wie schnell, womit haben sie dem Nutzer Probleme gemacht? Typische Karten "
-        "eines Gegner-Commanders liefert `edhrec_recommendations`, Details zu Gegnern `opponent_decks`, zu eigenen Partien `deck_games`.",
-        "2. „Am stärksten“ heißt: die besten Chancen gegen genau diese Gegner – innerhalb von Bracket, Feinstufe, Hausregeln, "
-        "Tischregel, Budget und Blacklist, nie darüber hinaus.",
-        "3. Baue ein stimmiges Deck mit eigener Siegstrategie und gezielter Interaktion gegen die Bedrohungen der Runde – kein "
-        "reines Hate-Deck, keine Karten nur gegen einen einzigen Gegner, wenn sie sonst tot sind.",
-        "4. `description`: warum das Deck gegen diese Runde stark ist. `notes`: pro Gegner ein kurzer Spielplan "
-        "(worauf achten, welche Antworten zurückhalten).",
-        "",
-        "Du läufst im GUI-Modus: Stelle keine Rückfragen, triff sinnvolle Annahmen und nenne sie in der Deckbeschreibung.",
-        "Karten und Regeln der Blacklist (`get_blacklist`) sind tabu.",
-        "Speichere das fertige Deck mit `save_deck` und behebe alle Fehler und Bracket-Verstöße, bevor du fertig bist.",
-        "Antworte auf Deutsch.",
-    ]
-    return "\n".join(lines)
-
-
-# --- commander finder --------------------------------------------------------------------------
-
-SUGGESTION_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "suggestions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Exact English card name of the commander"},
-                    "partner": {"type": "string", "description": "Partner/background if the suggestion is a pair, else empty"},
-                    "archetype": {"type": "string", "description": "Short strategy label, e.g. 'Aristocrats', 'Voltron'"},
-                    "why": {"type": "string", "description": "2-3 sentences in German why it fits the wish"},
-                    "strategy": {"type": "string", "description": "Suggested strategy text for the deck build form"},
-                    "bracket_fit": {"type": "string", "description": "How it plays in the requested bracket"},
-                    "difficulty": {"type": "string", "enum": ["einfach", "mittel", "anspruchsvoll"],
-                                   "description": "How hard the deck is to pilot for a new player"},
-                    "difficulty_note": {"type": "string", "description": "One sentence (German) why it is easy or hard to play"},
-                },
-                "required": ["name", "archetype", "why"],
-            },
-        }
-    },
-    "required": ["suggestions"],
-}
-
-
-# guided finder: quiz answers -> wording for the prompt (keys come from the GUI)
-FINDER_FEEL = {
-    "big": "große Kreaturen und angreifen", "tokens": "viele kleine Kreaturen / Spielsteine",
-    "spells": "Spontanzauber und Hexereien, Tricks", "control": "Kontrolle, auf alles eine Antwort haben",
-    "graveyard": "Friedhof, Dinge zurückholen", "sacrifice": "opfern und Lebenspunkte abziehen",
-    "voltron": "einen Helden mit Auren/Ausrüstungen groß machen", "chaos": "Politik, Chaos, Überraschungen",
-    "combo": "Combos und Engines bauen", "lands": "Länder und viel Mana (Landfall, Ramp)",
-}  # fmt: skip
-FINDER_THEMES = {
-    "dragons": "Drachen", "vampires": "Vampire", "elves": "Elfen", "zombies": "Zombies", "angels": "Engel",
-    "dinosaurs": "Dinosaurier", "pets": "Katzen und Hunde", "pirates": "Piraten", "artifacts": "Artefakte und Maschinen",
-    "wizards": "Magier und Zauberer", "horror": "Horror", "nature": "Natur und Tiere",
-}  # fmt: skip
-FINDER_EXPERIENCE = {
-    "new": "neu bei Commander – bevorzuge Commander, die einfach zu spielen sind: klarer Plan, wenige Entscheidungen "
-           "pro Zug, verzeihend bei Fehlern, kein Stax und keine komplizierten Combos. Mindestens drei Vorschläge "
-           "sollen „einfach“ sein.",
-    "some": "hat schon ein paar Partien gespielt – einfache bis mittlere Commander.",
-    "experienced": "erfahren – Schwierigkeit egal, gerne auch anspruchsvolle Commander.",
-}  # fmt: skip
-COLOR_WORDS = {"W": "Weiß", "U": "Blau", "B": "Schwarz", "R": "Rot", "G": "Grün"}
-
-
-class FinderRequest(BaseModel):
-    prompt: str = ""
-    feel: list[str] = Field(default_factory=list)
-    colors: list[str] = Field(default_factory=list)
-    themes: list[str] = Field(default_factory=list)
-    experience: str | None = Field(None, pattern="^(new|some|experienced)$")
-    bracket: int | None = Field(None, ge=1, le=5)
-    budget: float | None = None
-    proxy: bool = False
-    currency: str = "eur"
-    count: int = Field(5, ge=1, le=10)
-    model: str | None = None
-
-
-def finder_prompt(req: FinderRequest) -> str:
-    lines = [
-        "Finde passende Commander. Nutze dafür den Skill `commander-finder`.",
-        "",
-    ]
-    if req.prompt.strip():
-        lines.append(f"- Wunsch des Spielers: {req.prompt.strip()}")
-    feel = [FINDER_FEEL[f] for f in req.feel if f in FINDER_FEEL]
-    if feel:
-        lines.append(f"- Spielgefühl, das Spaß macht: {'; '.join(feel)}")
-    colors = [COLOR_WORDS[c] for c in "WUBRG" if c in req.colors]
-    if colors:
-        lines.append(f"- Lieblingsfarben: {', '.join(colors)} – die Farbidentität soll daraus bestehen oder sie enthalten "
-                     "(nicht zwingend alle auf einmal).")
-    themes = [FINDER_THEMES[t] for t in req.themes if t in FINDER_THEMES]
-    if themes:
-        lines.append(f"- Lieblingsthemen: {', '.join(themes)}")
-    if req.experience:
-        lines.append(f"- Erfahrung: {FINDER_EXPERIENCE[req.experience]}")
-    lines.append(f"- Anzahl Vorschläge: {req.count}")
-    if req.bracket:
-        lines.append(f"- Ziel-Bracket: {req.bracket} ({brackets.BY_NUMBER[req.bracket]['name']})")
-    lines.append(_budget_line(req.budget, req.proxy, req.currency).replace("`validate_deck`/`save_deck`", "die Deck-Planung"))
-    lines += [
-        "",
-        "Du läufst im GUI-Modus: keine Rückfragen. Baue KEIN Deck und speichere nichts.",
-        "Gib die Vorschläge als strukturierte Ausgabe zurück (exakte englische Kartennamen), Begründungen auf Deutsch. "
-        "`why` erklärt dem Spieler direkt („du“), warum der Commander zu seinen Antworten passt; "
-        "`difficulty` und `difficulty_note` sagen, wie leicht er zu spielen ist.",
-    ]
-    return "\n".join(lines)
-
-
-async def _enrich_suggestions(structured: Any) -> list[dict[str, Any]]:
-    items = (structured or {}).get("suggestions") if isinstance(structured, dict) else None
-    if not items:
-        return []
-    names = [i["name"] for i in items if i.get("name")] + [i["partner"] for i in items if i.get("partner")]
-    try:
-        cards, renames, _ = await resolve(names)
-    except Exception:
-        cards, renames = {}, {}
-    out = []
-    for item in items:
-        name = renames.get(item.get("name", ""), item.get("name", ""))
-        c = cards.get(name, {})
-        out.append(
-            {
-                **item,
-                "name": name,
-                "partner": renames.get(item.get("partner") or "", item.get("partner") or ""),
-                "image": c.get("image"),
-                "color_identity": c.get("color_identity"),
-                "type_line": c.get("type_line"),
-                "price_eur": c.get("price_eur"),
-                "price_usd": c.get("price_usd"),
-            }
-        )
-    return out
-
-
-class RetuneRequest(BaseModel):
-    slug: str
-    bracket: int = Field(ge=1, le=5)
-    profile: PowerProfile = PowerProfile()
-    request: str | None = None
-    model: str | None = None
-
-
-def retune_prompt(req: RetuneRequest, deck: dict[str, Any]) -> str:
-    old_profile = deck.get("power_profile") or {}
-    old_tier = old_profile.get("tier")
-    old = f"{TIER_LABELS[old_tier]} Bracket {deck.get('bracket')}" if old_tier else f"Bracket {deck.get('bracket')}"
-    power = ((deck.get("validation") or {}).get("bracket") or {}).get("power") or {}
-    new = f"{TIER_LABELS[req.profile.tier]} Bracket {req.bracket}" if req.profile.tier else f"Bracket {req.bracket}"
-    lines = [
-        f"Stimme das gespeicherte Commander-Deck `{req.slug}` neu ab (lade es mit `load_deck`).",
-        "Nutze den Skill `commander-deckbuilder`, Abschnitt „Bracket rauf/runter & Feinabstimmung“, und references/power-tuning.md.",
-        "",
-        f"- Bisher: {old}" + (f" (Power-Score {power.get('value')}, {power.get('text')})" if power else ""),
-        f"- Ziel: {new}",
-        f"- Bracket: {req.bracket} ({brackets.BY_NUMBER[req.bracket]['name']})",
-        *profile_lines(req.bracket, req.profile),
-        "- " + _budget_line(deck.get("budget"), bool(deck.get("proxy")), deck.get("currency", "eur")).lstrip("- "),
-        *_deck_table_lines(deck),
-        *opponents_mod.prompt_lines(deck),
-    ]
-    if req.request:
-        lines.append(f"- Zusätzlicher Wunsch: {req.request}")
-    lines += [
-        "",
-        "Du läufst im GUI-Modus: keine Rückfragen. Commander bleibt gleich. Karten und Regeln der Blacklist (`get_blacklist`) sind tabu.",
-        f"Speichere mit `save_deck` (slug=`{req.slug}`, neues `bracket`, `power_profile`) und einer `change_note`, "
-        "die alte → neue Stufe, Power-Score vorher/nachher und die wichtigsten Tausche mit Grund nennt.",
-        "Fasse die Änderungen (+ rein / - raus) kurz zusammen. Antworte auf Deutsch.",
-    ]
-    return "\n".join(lines)
-
-
-class RefineRequest(BaseModel):
-    slug: str
-    request: str
-    model: str | None = None
-
-
-def refine_prompt(req: RefineRequest, deck: dict[str, Any] | None = None) -> str:
-    deck = deck or {}
-    budget = _budget_line(deck.get("budget"), bool(deck.get("proxy")), deck.get("currency", "eur"))
-    return "\n".join(
-        [
-            f"Überarbeite das gespeicherte Commander-Deck `{req.slug}` (lade es mit `load_deck`).",
-            f"Bisherige Vorgaben: {budget.lstrip('- ')}",
-            *_deck_table_lines(deck),
-            *opponents_mod.prompt_lines(deck),
-            "Karten und Regeln der Blacklist (`get_blacklist`) sind tabu.",
-            "Nutze den Skill `commander-deckbuilder` (Abschnitt „Deck überarbeiten“).",
-            f"Änderungswunsch: {req.request}",
-            "",
-            "Du läufst im GUI-Modus: keine Rückfragen. Behalte Bracket und Commander bei, sofern nicht anders gewünscht.",
-            f"Speichere das Ergebnis mit `save_deck` und slug=`{req.slug}`. Fasse die Änderungen (rein/raus) kurz zusammen. Antworte auf Deutsch.",
-        ]
-    )
-
-
-CARD_REF = re.compile(r"\[\[([^\[\]]{2,141})\]\]")
-
-
-async def _card_refs(text: str) -> dict[str, dict[str, Any]]:
-    """Images for the [[Card Name]] references of an answer (hover preview in the GUI)."""
-    names = list(dict.fromkeys(m.strip() for m in CARD_REF.findall(text)))[:80]
-    if not names:
-        return {}
-    try:
-        cards, renames, _ = await resolve(names)
-    except Exception:
-        return {}
-    out = {}
-    for name in names:
-        c = cards.get(renames.get(name, name))
-        if c and c.get("image"):
-            out[name] = {"image": c["image"], "image_back": c.get("image_back"), "scryfall_uri": c.get("scryfall_uri")}
-    return out
-
-
-def _deck_focus_lines(deck: dict[str, Any] | None) -> list[str]:
-    """The question is about one saved deck: load it first, follow the deck-question guidance, mind its table rule
-    and opponents (what the former „Fragen zum Deck“ tab told Claude)."""
-    if not deck:
-        return []
-    about = [f"„{deck.get('name', deck['slug'])}“", "Commander: " + (" + ".join(deck.get("commanders") or []) or "?"),
-             storage.level_text(deck)] + (["Proxy-Deck"] if deck.get("proxy") else [])  # fmt: skip
-    return [
-        "",
-        f"Die Frage bezieht sich auf das Deck {{{{{deck['slug']}}}}} ({', '.join(about)}): lade es zuerst mit `load_deck` und "
-        "folge dem Skill-Abschnitt „Fragen zum Deck“ (references/deck-questions.md). Festgehaltene Partien (Ergebnisse, "
-        "Probleme, Gegner) liefert `deck_games`. Läuft die Frage auf Änderungen hinaus, schlage konkrete Tausche vor "
-        "(+ rein / − raus, jeweils mit Grund); umsetzen kann man sie im Deck unter „Anpassen“.",
-        *[ln.replace("gilt für dieses Deck", "gilt für dieses Deck – beachte sie bei Tausch-Vorschlägen") for ln in _deck_table_lines(deck)[:-1]],
-        *opponents_mod.prompt_lines(deck),
-    ]
-
-
-DECK_REF = re.compile(r"\{\{([a-z0-9][a-z0-9-]{0,80})\}\}")
-
-
-def _deck_refs(text: str) -> dict[str, dict[str, Any]]:
-    """The saved decks an answer links as {{slug}}: slug -> name and commanders (unknown slugs are left out)."""
-    slugs = list(dict.fromkeys(DECK_REF.findall(text)))
-    if not slugs:
-        return {}
-    known = {d["slug"]: d for d in storage.list_decks()}
-    return {s: {"name": known[s]["name"], "commanders": known[s]["commanders"]} for s in slugs if s in known}
-
-
-class ChatRequest(BaseModel):
-    question: str = Field(min_length=2, max_length=4000)
-    chat_id: str | None = None
-    deep: bool = False  # „Gründlich“: Opus 5.5 at extra-high effort
-    deck: str | None = None  # the question is about this saved deck („Claude fragen“ in the deck)
-    model: str | None = None
-
-
-CHAT_HISTORY = 6  # earlier exchanges passed along for follow-ups
-
-
-def chat_prompt(question: str, history: list[dict[str, Any]] | None = None, data: dict[str, Any] | None = None, *, phone: bool = False,
-                deck: dict[str, Any] | None = None) -> str:  # fmt: skip
-    lines = [
-        "Du bist der Assistent der ganzen Commander-Deckbuilder-App. Beantworte die Frage des Nutzers über seine "
-        "Decks, Partien, Gegnerdecks, Tischregeln und Sammlung. Nutze den Skill `commander-deckbuilder`, Abschnitt "
-        "„Chat mit der ganzen App“ (references/app-chat.md).",
-        "",
-        "Regeln:",
-        "- Nur lesen: Nichts wird verändert oder gespeichert. Läuft die Frage auf Änderungen hinaus, schlage sie "
-        "konkret vor (welches Deck, + rein / − raus mit Grund, oder welcher Schritt in der App) – umsetzen kann der "
-        "Nutzer sie im Deck unter „Anpassen“.",
-        "- Du läufst im GUI-Modus: keine Rückfragen. Triff sinnvolle Annahmen und nenne sie kurz.",
-        "- Die Übersicht unten ist der aktuelle Stand. Für Details: `load_deck` (Karten, Beschreibung), `deck_games` "
-        "(Partien), `list_deck_versions`, `opponent_decks`, `table_rules`, `collection_status`/`collection_search`, "
-        "`get_cards`, `find_combos`, EDHREC-Tools. Stütze Aussagen auf Daten, nicht auf dein Gedächtnis.",
-        "- Verlinke gespeicherte Decks immer als {{slug}} (genau der Slug aus der Übersicht, z. B. {{meren-aristocrats}}) – "
-        "die App macht daraus einen Link mit dem Decknamen. Schreibe Kartennamen als [[Kartenname]] (englischer Oracle-Name).",
-        "- Wenige Partien sind wenig Aussagekraft – sag das, statt aus 1–2 Spielen Schlüsse zu ziehen.",
-        "- Antworte auf Deutsch in Markdown: Kernaussage zuerst, dann kurze Absätze, Listen oder eine Tabelle. "
-        "Keine Vorrede über deine Arbeitsschritte.",
-        *(["- Die Frage kommt aus der Handy-App, oft mitten am Spieltisch: antworte knapp (meist unter 200 Wörtern), "
-           "kurze Listen statt langer Absätze, eine Tabelle nur, wenn sie wirklich hilft."] if phone else []),
-        *_deck_focus_lines(deck),
-        "",
-        "Übersicht der App:",
-        *overview.prompt_lines(data),
-    ]
-    earlier = [h for h in history or [] if h.get("answer")][-CHAT_HISTORY:]  # open/failed questions from the phone carry no answer
-    if earlier:
-        lines += ["", "Bisheriges Gespräch (zur Einordnung von Anschlussfragen):"]
-        for h in earlier:
-            answer = h.get("answer") or ""
-            answer = answer if len(answer) <= 1500 else answer[:1500] + " …"
-            lines += [f"Frage: {h.get('question', '')}", f"Antwort: {answer}", ""]
-    lines += ["", f"Frage: {question.strip()}"]
-    return "\n".join(lines)
-
-
 # --- routes ------------------------------------------------------------------------------------
 
 
@@ -944,70 +242,7 @@ async def index() -> FileResponse:
 @app.get("/api/health")
 async def api_health() -> dict[str, Any]:
     """Readiness for the desktop shell (no token needed): the backend is up and serving this data folder."""
-    return {"ok": True, "service": "mtgdeck-gui", "version": VERSION, "home": str(paths.home()), "frozen": paths.frozen(),
-            "agent_root": str(AGENT_ROOT), "skills": (AGENT_ROOT / ".claude" / "skills").is_dir(), "claude_cli": bool(_find_claude_cli())}  # fmt: skip
-
-
-@app.get("/api/ai")
-async def api_ai(refresh: bool = False) -> dict[str, Any]:
-    """``ai_status()`` plus, when the CLI is there, whether it is signed in (checked in a thread, cached)."""
-    st = ai_status()
-    if not st["enabled"] or not _find_claude_cli():
-        return st
-    auth = await asyncio.to_thread(_auth_status, refresh)
-    return {**ai_status(), "login": {"logged_in": auth["logged_in"], "method": auth["method"]},
-            "cli": {"bundled": paths.bundled_cli() is not None, "terminal": terminal.available()}}  # fmt: skip
-
-
-class LoginRequest(BaseModel):
-    rows: int = Field(default=24, ge=5, le=300)
-    cols: int = Field(default=100, ge=20, le=500)
-
-
-@app.post("/api/ai/login")
-async def api_ai_login(req: LoginRequest) -> dict[str, Any]:
-    """Sign in to Claude with the (bundled) CLI, interactively in the GUI's terminal: the CLI opens the browser, the
-    user confirms there and pastes the code if asked. Afterwards the sign-in state is checked again."""
-    cli = _find_claude_cli()
-    if not cli:
-        raise HTTPException(400, "Claude Code wurde nicht gefunden – installieren (claude.ai/code).")
-    if not terminal.available():
-        raise HTTPException(400, "Für die Anmeldung hier fehlt das Terminal-Paket (pywinpty/ptyprocess) – stattdessen einmal `claude` in einer Konsole ausführen.")  # fmt: skip
-
-    async def runner(job: Job) -> None:
-        job.emit(type="status", text="Anmeldung bei Claude … Es öffnet sich ein Browserfenster – bestätige dort und folge dem Terminal unten.")  # fmt: skip
-        term = terminal.Terminal([cli, "auth", "login"], cwd=str(AGENT_ROOT), rows=req.rows, cols=req.cols)
-        job.proc = term
-        job.emit(type="console", running=True)
-
-        def pump() -> None:
-            while data := term.read():
-                job.emit_threadsafe(type="term", data=data)
-
-        await asyncio.to_thread(pump)
-        code = await asyncio.to_thread(term.exit_code)
-        job.emit(type="console", running=False)
-        auth = await asyncio.to_thread(_auth_status, True)
-        ok = bool(auth["logged_in"]) if auth["logged_in"] is not None else code == 0
-        if ok:
-            _ai_failure.clear()
-        job.emit(type="result", text="Angemeldet – Claude ist bereit." if ok else f"Anmeldung nicht abgeschlossen (Code {code}).")
-        job.emit(type="done", ok=ok)
-
-    return _start_runner(runner)
-
-
-@app.post("/api/ai/logout")
-async def api_ai_logout() -> dict[str, Any]:
-    cli = _find_claude_cli()
-    if not cli:
-        raise HTTPException(400, "Claude Code wurde nicht gefunden.")
-    try:
-        await asyncio.to_thread(subprocess.run, [cli, "auth", "logout"], capture_output=True, text=True, timeout=30,
-                                stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)  # fmt: skip
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise HTTPException(502, f"Abmelden fehlgeschlagen: {exc}") from exc
-    return await api_ai(refresh=True)
+    return {"ok": True, "service": "mtgdeck-gui", "version": VERSION, "home": str(paths.home()), "frozen": paths.frozen()}
 
 
 # --- desktop shell (Tauri): tray tooltip, notifications while hidden, commands from the settings page ---------
@@ -1061,8 +296,6 @@ def _desktop_tooltip() -> str:
             lines.append(f"Sync: {_ago(sv['last_ok'])}")
         else:
             lines.append("Sync: noch kein Abgleich")
-    if (sv.get("phone") or {}).get("current"):
-        lines.append("Beantwortet gerade eine Frage vom Handy")
     return "\n".join(lines)
 
 
@@ -1165,339 +398,6 @@ async def api_glossary() -> list[dict[str, Any]]:
     return glossary.entries()
 
 
-@app.post("/api/build")
-async def api_build(req: BuildRequest) -> dict[str, str]:
-    if req.table_rule and not tablerules.get(req.table_rule):
-        raise HTTPException(404, "Diese Tischregel gibt es nicht mehr.")
-    return _start(build_prompt(req), req.model, table_rule=req.table_rule)
-
-
-META_MODEL = "claude-opus-5-5"  # meta suggestions always run on Opus 5.5 at extra-high effort
-META_EFFORT = "xhigh"
-META_COUNT = (3, 5)
-META_SUGGEST_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "analysis": {"type": "string", "description": "3-5 sentences (German): how the pod wins, its main threats, what the user's decks lack against it"},
-        "suggestions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Exact English card name of the commander"},
-                    "partner": {"type": "string", "description": "Partner/background if a pair, else empty"},
-                    "archetype": {"type": "string", "description": "Short strategy label, e.g. 'Stax-Kontrolle', 'Aristocrats'"},
-                    "why": {"type": "string", "description": "2-3 sentences (German, 'du'): why this deck is strong against exactly this pod"},
-                    "win_plan": {"type": "string", "description": "1-2 sentences (German): how the deck wins"},
-                    "matchups": {"type": "array", "description": "One entry per opponent deck", "items": {
-                        "type": "object", "properties": {
-                            "opponent": {"type": "string", "description": "Opponent deck as named in the prompt"},
-                            "plan": {"type": "string", "description": "One sentence (German): how to beat it"}},
-                        "required": ["opponent", "plan"]}},
-                    "key_cards": {"type": "array", "items": {"type": "string"}, "description": "5-8 key cards, exact English names, checked with the tools"},
-                    "risks": {"type": "string", "description": "One sentence (German): the main weakness"},
-                    "bracket_fit": {"type": "string", "description": "How it fits bracket, sub-tier, table rule and budget"},
-                    "strategy": {"type": "string", "description": "Strategy text for the build form (German)"},
-                    "difficulty": {"type": "string", "enum": ["einfach", "mittel", "anspruchsvoll"]},
-                    "difficulty_note": {"type": "string"},
-                },
-                "required": ["name", "archetype", "why", "win_plan", "strategy"],
-            },
-        },
-        "sources": {"type": "array", "items": {"type": "string"}, "description": "Web sources used (URL or title), if any"},
-    },
-    "required": ["analysis", "suggestions"],
-}  # fmt: skip
-
-
-class MetaSuggestRequest(MetaBuildRequest):
-    count: int = Field(4, ge=META_COUNT[0], le=META_COUNT[1])
-    research: bool = True  # allow WebSearch / WebFetch
-
-
-def meta_suggest_prompt(req: MetaSuggestRequest) -> str:
-    lines = [
-        f"Schlage {req.count} Commander-Decks vor, die gegen die Runde des Nutzers am stärksten wären. Nutze den Skill "
-        "`commander-deckbuilder` (Abschnitt „Gegen die Runde bauen“) und für die Commander-Wahl den Skill `commander-finder`. "
-        "Baue noch KEIN Deck und speichere nichts – der Nutzer wählt einen Vorschlag aus.",
-        "",
-        *_meta_context(req, free=True),
-        "",
-        "So gehst du vor:",
-        "1. Analysiere die Runde gründlich: Wie gewinnen die Gegner, wie schnell, womit haben sie dem Nutzer Probleme gemacht, "
-        "was fehlt seinen Decks? Typische Karten der Gegner-Commander: `edhrec_recommendations`; Details: `opponent_decks`, `deck_games`.",
-        "2. „Am stärksten“ heißt: die besten Chancen gegen genau diese Gegner – innerhalb von Bracket, Feinstufe, Hausregeln, "
-        "Tischregel, Budget und Blacklist, nie darüber hinaus.",
-        f"3. Wähle {req.count} deutlich verschiedene Ansätze (Farben, Strategie, Tempo), sortiert nach erwarteter Stärke, keinen "
-        "Commander, den der Nutzer schon spielt. Prüfe Schlüsselkarten und Combos mit den Tools (`get_cards`, `find_combos`).",
-        "4. Pro Vorschlag: warum er gegen diese Runde stark ist, wie er gewinnt, ein Satz Spielplan pro Gegnerdeck, 5–8 "
-        "Schlüsselkarten, die größte Schwäche, wie er in Bracket/Tischregel/Budget passt, ein Strategietext fürs Bauformular.",
-    ]
-    if req.research:
-        lines.append("5. Du darfst im Web recherchieren (`WebSearch`, `WebFetch`): aktuelle Meta-Artikel, EDHREC-Seiten, Turnier- und "
-                     "Decklisten-Datenbanken. Nutze das gezielt für die Gegner-Commander und deine Kandidaten und nenne die Quellen "
-                     "in `sources`. Kartentexte und Legalität prüfst du trotzdem mit den mtg-Tools.")  # fmt: skip
-    lines += [
-        "",
-        "Du läufst im GUI-Modus: keine Rückfragen. Gib das Ergebnis als strukturierte Ausgabe zurück, alle Texte auf Deutsch, "
-        "Kartennamen exakt auf Englisch.",
-    ]
-    return "\n".join(lines)
-
-
-def _meta_file() -> Path:
-    return storage.DECKS_DIR / ".meta-suggestions.json"
-
-
-@app.post("/api/build-meta/suggest")
-async def api_build_meta_suggest(req: MetaSuggestRequest) -> dict[str, str]:
-    known = {o["id"] for o in opponents_mod.all_opponents()}
-    if not known:
-        raise HTTPException(400, "Noch keine Gegnerdecks – lege sie unter „Gegnerdecks“ an oder halte Partien mit Gegnern fest.")
-    req.opponent_ids = [i for i in req.opponent_ids if i in known]
-    if req.table_rule and not tablerules.get(req.table_rule):
-        raise HTTPException(404, "Diese Tischregel gibt es nicht mehr.")
-
-    async def finish(job: Job, ok: bool, _text: str, structured: Any) -> None:
-        items = await _enrich_suggestions(structured) if ok else []
-        if items:
-            result = {"created": storage._now(), "model": META_MODEL, "effort": META_EFFORT, "research": req.research,
-                      "analysis": (structured or {}).get("analysis", ""), "sources": (structured or {}).get("sources") or [],
-                      "suggestions": items, "request": req.model_dump(exclude={"model"})}  # fmt: skip
-            write_json(_meta_file(), result)
-            job.emit(type="meta_suggestions", result=result)
-        elif ok:
-            job.emit(type="error", text="Keine verwertbaren Vorschläge erhalten.")
-        job.emit(type="done", ok=bool(items), deck=None)
-
-    output_format = {"type": "json_schema", "schema": META_SUGGEST_SCHEMA}
-    return _start(meta_suggest_prompt(req), META_MODEL, output_format, read_only=True, finish=finish,
-                  effort=META_EFFORT, web=req.research)  # fmt: skip
-
-
-@app.get("/api/build-meta/suggestions")
-async def api_build_meta_last() -> dict[str, Any]:
-    try:
-        return json.loads(_meta_file().read_text("utf-8"))
-    except (FileNotFoundError, ValueError):
-        return {}
-
-
-@app.post("/api/build-meta")
-async def api_build_meta(req: MetaBuildRequest) -> dict[str, str]:
-    known = {o["id"] for o in opponents_mod.all_opponents()}
-    if not known:
-        raise HTTPException(400, "Noch keine Gegnerdecks – lege sie unter „Gegnerdecks“ an oder halte Partien mit Gegnern fest.")
-    req.opponent_ids = [i for i in req.opponent_ids if i in known]
-    if req.table_rule and not tablerules.get(req.table_rule):
-        raise HTTPException(404, "Diese Tischregel gibt es nicht mehr.")
-    against = req.opponent_ids or sorted(known)
-    return _start(meta_prompt(req), req.model, table_rule=req.table_rule, extras={"built_against": against})
-
-
-@app.post("/api/refine")
-async def api_refine(req: RefineRequest) -> dict[str, str]:
-    try:
-        deck = storage.load(req.slug)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    return _start(refine_prompt(req, deck), req.model)
-
-
-@app.post("/api/retune")
-async def api_retune(req: RetuneRequest) -> dict[str, str]:
-    try:
-        deck = storage.load(req.slug)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    return _start(retune_prompt(req, deck), req.model)
-
-
-# --- upgrade suggestions ----------------------------------------------------------------------
-
-UPGRADE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "summary": {"type": "string", "description": "One or two sentences: what the upgrades achieve together"},
-        "upgrades": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "add": {"type": "string", "description": "English card name to put in"},
-                    "remove": {"type": "string", "description": "Card of the deck to take out"},
-                    "price": {"type": ["number", "null"], "description": "Price of the new card in the deck currency"},
-                    "owned": {"type": "boolean", "description": "The user already owns the new card (collection)"},
-                    "impact": {"type": "string", "description": "Short effect label, e.g. 'mehr Kartenzug', 'schnellerer Ramp'"},
-                    "reason": {"type": "string", "description": "Why this swap, one or two sentences (German)"},
-                },
-                "required": ["add", "remove", "reason"],
-            },
-        },
-    },
-    "required": ["upgrades"],
-}
-
-
-class UpgradeRequest(BaseModel):
-    budget: float | None = Field(default=None, ge=0)
-    focus: str | None = None
-    opponent_id: str | None = None
-    count: int = Field(default=8, ge=1, le=20)
-    model: str | None = None
-
-
-def upgrade_prompt(deck: dict[str, Any], req: UpgradeRequest, has_collection: bool) -> str:
-    cur = deck.get("currency", "eur").upper()
-    if deck.get("proxy"):
-        money = "- Proxy-Deck: Preise spielen keine Rolle, nimm die stärksten passenden Karten."
-    elif req.budget is not None:
-        money = f"- Budget für alle Upgrades zusammen: max. {req.budget:g} {cur} (Summe der Preise der neuen Karten)."
-    else:
-        money = "- Kein Budget-Limit, aber nenne den Preis jeder neuen Karte."
-    lines = [
-        f"Schlage Upgrades für das gespeicherte Commander-Deck `{deck['slug']}` vor (lade es mit `load_deck`, "
-        f"{storage.level_text(deck)}). Recherchiere wie beim Bauen (Skill `commander-deckbuilder`): "
-        "`edhrec_recommendations`, `similar_cards`, `find_combos`, `get_cards`.",
-        "",
-        money,
-        f"- Bis zu {req.count} Tausche, sortiert nach Wirkung (stärkster zuerst). Jeder Tausch: genau eine Karte rein "
-        "(`add`), eine Karte raus (`remove`, muss im Deck sein, keine Basic Lands außer für Länder-Tausche).",
-        "- Bracket, Hausregeln, Farbidentität und Blacklist (`get_blacklist`) einhalten; keine zusätzlichen Game Changer "
-        "über dem Limit, keine im Bracket verbotenen Combos.",
-        *_deck_table_lines(deck),
-        *opponents_mod.prompt_lines(deck, focus_id=req.opponent_id),
-    ]
-    if req.focus:
-        lines.append(f"- Fokus des Nutzers: {req.focus}")
-    record = games.stats(games.games(deck["slug"]))
-    if record["games"]:
-        common = ", ".join(f"{i['label']} ({i['count']}×)" for i in record["issues"][:4]) or "keine notiert"
-        lines.append(f"- Festgehaltene Partien: {record['wins']} Siege, {record['losses']} Niederlagen; häufigste Probleme: "
-                     f"{common}. Details über `deck_games` – die Tausche sollen genau diese Probleme angehen.")
-        if record["rounds"]:
-            lines.append(f"- {games.rounds_line(record['rounds'])} Die Tausche sollen auch dagegen helfen.")
-    if has_collection:
-        lines.append("- Sammlung: Karten, die der Nutzer schon besitzt (`collection_search`), kosten nichts – bevorzuge sie "
-                     "bei gleicher Wirkung und setze `owned` auf true.")
-    lines += ["", "Du läufst im GUI-Modus: keine Rückfragen und nichts speichern – der Nutzer wählt die Tausche selbst aus. "
-              "Texte auf Deutsch."]
-    return "\n".join(lines)
-
-
-async def _enrich_upgrades(deck: dict[str, Any], structured: Any) -> list[dict[str, Any]]:
-    """Check Claude's suggestions against the deck and add images, current prices and ownership."""
-    items = (structured or {}).get("upgrades") if isinstance(structured, dict) else None
-    if not items:
-        return []
-    in_deck = {c["name"] for c in deck.get("cards", [])}
-    try:
-        data, renames, _ = await resolve([i.get("add", "") for i in items] + [i.get("remove", "") for i in items])
-    except Exception:
-        data, renames = {}, {}
-    owned = collection.owned_counts()
-    cur = "price_usd" if deck.get("currency") == "usd" else "price_eur"
-    out, seen = [], set()
-    for i in items:
-        add = renames.get(i.get("add", ""), i.get("add", ""))
-        remove = renames.get(i.get("remove", ""), i.get("remove", ""))
-        if add not in data or add in in_deck or remove not in in_deck or add in seen:
-            continue
-        seen.add(add)
-        have = owned.get(add, {})
-        price = data[add].get(cur)
-        out.append({
-            "add": add, "remove": remove, "reason": i.get("reason", ""), "impact": i.get("impact", ""),
-            "price": float(price) if price else None, "owned": bool(have.get("real") or have.get("proxy")),
-            "image": data[add].get("image"), "image_remove": (data.get(remove) or {}).get("image"),
-            "type_line": data[add].get("type_line"),
-        })  # fmt: skip
-    return out
-
-
-@app.post("/api/decks/{slug}/upgrades")
-async def api_upgrades(slug: str, req: UpgradeRequest) -> dict[str, str]:
-    try:
-        deck = storage.load(slug)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-
-    async def finish(job: Job, ok: bool, _text: str, structured: Any) -> None:
-        items = await _enrich_upgrades(deck, structured) if ok else []
-        if items:
-            job.emit(type="upgrades", items=items, summary=(structured or {}).get("summary", ""), currency=deck.get("currency", "eur"))
-        elif ok:
-            job.emit(type="error", text="Keine verwertbaren Vorschläge erhalten.")
-        job.emit(type="done", ok=bool(items), deck=None)
-
-    prompt = upgrade_prompt(deck, req, bool(collection.load()))
-    output_format = {"type": "json_schema", "schema": UPGRADE_SCHEMA}
-    return _start(prompt, req.model, output_format, read_only=True, finish=finish)
-
-
-_STR_LIST = {"type": "array", "items": {"type": "string"}}
-GUIDE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "plan": {"type": "string", "description": "Game plan in at most three sentences, for a beginner"},
-        "early": {**_STR_LIST, "description": "Early game (turns 1-3): what to do, 2-4 bullets"},
-        "mid": {**_STR_LIST, "description": "Mid game: 2-4 bullets"},
-        "late": {**_STR_LIST, "description": "Late game / closing: 2-4 bullets"},
-        "mulligan": {**_STR_LIST, "description": "Keep/mulligan rules for the opening hand, 2-4 bullets"},
-        "key_cards": {"type": "array", "description": "4-8 most important cards of the deck", "items": {
-            "type": "object", "properties": {"name": {"type": "string", "description": "English card name"},
-                                             "why": {"type": "string", "description": "One sentence: role and when to play it"}},
-            "required": ["name", "why"]}},
-        "win_conditions": {**_STR_LIST, "description": "How the deck actually wins, 1-4 bullets"},
-        "watch_out": {**_STR_LIST, "description": "Weaknesses, threats to respect, common mistakes, 2-4 bullets"},
-        "tips": {**_STR_LIST, "description": "Play tips and interactions that are easy to miss, 2-5 bullets"},
-    },
-    "required": ["plan", "early", "mid", "late", "mulligan", "key_cards", "win_conditions"],
-}  # fmt: skip
-
-
-class GuideRequest(BaseModel):
-    model: str | None = None
-
-
-def guide_prompt(deck: dict[str, Any]) -> str:
-    return "\n".join([
-        f"Schreibe eine Spielanleitung für das gespeicherte Commander-Deck `{deck['slug']}` ({storage.level_text(deck)}). "
-        "Lade es mit `load_deck`, lies die Schlüsselkarten mit `get_cards` und prüfe Combos mit `find_combos`. "
-        "Nutze den Skill `commander-deckbuilder` (Abschnitt „Deck-Anleitung“).",
-        "",
-        "Zielgruppe: Einsteiger, die das Deck zum ersten Mal spielen. Die Anleitung passt auf eine gedruckte Seite – "
-        "kurze, konkrete Stichpunkte, keine Floskeln. Nenne Karten beim englischen Namen als [[Kartenname]].",
-        "Du läufst im GUI-Modus: keine Rückfragen, nichts speichern. Alle Texte auf Deutsch.",
-    ])  # fmt: skip
-
-
-async def _clean_guide(deck: dict[str, Any], structured: Any) -> dict[str, Any] | None:
-    """Keep the schema fields, drop key cards that are not in the deck, add images for [[refs]]."""
-    if not isinstance(structured, dict) or not structured.get("plan"):
-        return None
-    lists = ("early", "mid", "late", "mulligan", "win_conditions", "watch_out", "tips")
-    guide: dict[str, Any] = {"plan": str(structured["plan"]).strip()}
-    for key in lists:
-        guide[key] = [str(x).strip() for x in structured.get(key) or [] if str(x).strip()][:6]
-    in_deck = {c["name"] for c in deck.get("cards", [])} | set(deck.get("commanders", []))
-    names = [k.get("name", "") for k in structured.get("key_cards") or [] if isinstance(k, dict)]
-    try:
-        data, renames, _ = await resolve(names) if names else ({}, {}, [])
-    except Exception:
-        data, renames = {}, {}
-    guide["key_cards"] = []
-    for k in structured.get("key_cards") or []:
-        name = renames.get(k.get("name", ""), k.get("name", "")) if isinstance(k, dict) else ""
-        if name in in_deck:
-            guide["key_cards"].append({"name": name, "why": k.get("why", ""), "image": (data.get(name) or {}).get("image")})
-    text = " ".join([guide["plan"], *(x for key in lists for x in guide[key])])
-    guide["cards"] = await _card_refs(text)
-    guide["version"] = deck.get("version")
-    guide["created"] = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())
-    return guide
-
-
 class GameIn(BaseModel):
     result: str = Field(pattern="^(win|loss|draw)$")
     opponents: list[str] = Field(default_factory=list, max_length=5)
@@ -1559,129 +459,6 @@ async def api_rule0(slug: str) -> dict[str, Any]:
         return rule0.build(storage.load(slug))
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
-
-
-@app.post("/api/decks/{slug}/guide")
-async def api_guide(slug: str, req: GuideRequest) -> dict[str, str]:
-    try:
-        deck = storage.load(slug)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-
-    async def finish(job: Job, ok: bool, _text: str, structured: Any) -> None:
-        guide = await _clean_guide(deck, structured) if ok else None
-        if guide:
-            storage.set_extra(slug, "guide", guide)
-            job.emit(type="guide", guide=guide)
-        elif ok:
-            job.emit(type="error", text="Keine verwertbare Anleitung erhalten.")
-        job.emit(type="done", ok=bool(guide), deck=None)
-
-    output_format = {"type": "json_schema", "schema": GUIDE_SCHEMA}
-    return _start(guide_prompt(deck), req.model, output_format, read_only=True, finish=finish)
-
-
-PLAN_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "summary": {"type": "string", "description": "One or two sentences: where the plan takes the deck"},
-        "stages": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string", "description": "Short stage title (German), e.g. 'Manabasis & Ramp'"},
-                    "goal": {"type": "string", "description": "What this stage improves, one sentence (German)"},
-                    "upgrades": UPGRADE_SCHEMA["properties"]["upgrades"],
-                },
-                "required": ["title", "upgrades"],
-            },
-        },
-    },
-    "required": ["stages"],
-}
-
-
-class PlanRequest(BaseModel):
-    stages: list[float] = Field(default_factory=lambda: [20, 50, 100], min_length=1, max_length=4)
-    focus: str | None = None
-    model: str | None = None
-
-
-def plan_prompt(deck: dict[str, Any], req: PlanRequest, has_collection: bool) -> str:
-    cur = deck.get("currency", "eur").upper()
-    stages = sorted(b for b in req.stages if b >= 0)
-    if deck.get("proxy"):
-        money = [f"- Proxy-Deck: Preise spielen keine Rolle. Mache {len(stages)} Stufen nach Wirkung (wichtigste zuerst)."]
-    else:
-        money = [f"- {len(stages)} Stufen mit kumuliertem Budget: " + ", ".join(f"Stufe {i + 1} bis {b:g} {cur} insgesamt"
-                 for i, b in enumerate(stages)) + ". Die Summe der neuen Karten aller Stufen bis einschließlich Stufe n "
-                 "bleibt unter dem Betrag von Stufe n."]  # fmt: skip
-    lines = [
-        f"Erstelle einen Upgrade-Plan in Stufen für das gespeicherte Commander-Deck `{deck['slug']}` (lade es mit `load_deck`, "
-        f"{storage.level_text(deck)}). Recherchiere wie beim Bauen (Skill `commander-deckbuilder`): "
-        "`edhrec_recommendations`, `similar_cards`, `find_combos`, `get_cards`, und schau in `deck_games`, ob Partien festgehalten sind.",
-        "",
-        *money,
-        "- Jede Stufe hat ein klares Thema (z. B. erst Manabasis und Ramp, dann Kartenzug und Removal, dann Synergie) und 3–8 Tausche: "
-        "genau eine Karte rein (`add`), eine raus (`remove`, muss im aktuellen Deck sein).",
-        "- Die Stufen bauen aufeinander auf: keine Karte zweimal hinzufügen, keine Karte entfernen, die eine frühere Stufe erst "
-        "hinzugefügt hat, jede Karte nur einmal entfernen.",
-        "- Bracket, Hausregeln, Farbidentität und Blacklist (`get_blacklist`) einhalten.",
-        *_deck_table_lines(deck),
-        *opponents_mod.prompt_lines(deck),
-    ]
-    if deck.get("precon"):
-        lines.append(f"- Das Deck ist das Precon „{deck['precon'].get('name')}“: raus zuerst die schwächsten Karten des Precons.")
-    if req.focus:
-        lines.append(f"- Fokus des Nutzers: {req.focus}")
-    if has_collection:
-        lines.append("- Karten aus der Sammlung (`collection_search`) kosten nichts – bevorzuge sie und setze `owned` auf true.")
-    lines += ["", "Du läufst im GUI-Modus: keine Rückfragen und nichts speichern. Texte auf Deutsch."]
-    return "\n".join(lines)
-
-
-async def _enrich_plan(deck: dict[str, Any], structured: Any, budgets: list[float]) -> dict[str, Any] | None:
-    """Validate every stage like single upgrade suggestions; a card is added or removed only once."""
-    stages = (structured or {}).get("stages") if isinstance(structured, dict) else None
-    if not isinstance(stages, list):
-        return None
-    added: set[str] = set()
-    removed: set[str] = set()
-    out = []
-    for i, st in enumerate(stages[:4]):
-        if not isinstance(st, dict):
-            continue
-        items = [u for u in await _enrich_upgrades(deck, {"upgrades": st.get("upgrades") or []})
-                 if u["add"] not in added and u["remove"] not in removed]  # fmt: skip
-        if not items:
-            continue
-        added |= {u["add"] for u in items}
-        removed |= {u["remove"] for u in items}
-        budget = sorted(budgets)[i] if i < len(budgets) and not deck.get("proxy") else None
-        out.append({"title": str(st.get("title") or f"Stufe {i + 1}"), "goal": str(st.get("goal") or ""), "budget": budget,
-                    "cost": round(sum(u["price"] or 0 for u in items if not u["owned"]), 2), "upgrades": items})  # fmt: skip
-    if not out:
-        return None
-    return {"summary": str((structured or {}).get("summary") or ""), "stages": out, "currency": deck.get("currency", "eur"),
-            "version": deck.get("version"), "created": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())}  # fmt: skip
-
-
-@app.post("/api/decks/{slug}/upgrade-plan")
-async def api_upgrade_plan(slug: str, req: PlanRequest) -> dict[str, str]:
-    deck = _not_found(storage.load, slug)
-
-    async def finish(job: Job, ok: bool, _text: str, structured: Any) -> None:
-        plan = await _enrich_plan(deck, structured, req.stages) if ok else None
-        if plan:
-            storage.set_extra(slug, "upgrade_plan", plan)
-            job.emit(type="plan", plan=plan)
-        elif ok:
-            job.emit(type="error", text="Kein verwertbarer Plan erhalten.")
-        job.emit(type="done", ok=bool(plan), deck=None)
-
-    prompt = plan_prompt(deck, req, bool(collection.load()))
-    return _start(prompt, req.model, {"type": "json_schema", "schema": PLAN_SCHEMA}, read_only=True, finish=finish)
 
 
 class ImportPreviewRequest(BaseModel):
@@ -1956,92 +733,6 @@ async def api_precon_import(req: PreconImport) -> dict[str, Any]:
         raise HTTPException(502, f"MTGJSON nicht erreichbar: {_error_text(exc)}") from exc
 
 
-@app.get("/api/chats")
-async def api_chats() -> list[dict[str, Any]]:
-    return chat.chats()
-
-
-@app.get("/api/chats/{chat_id}")
-async def api_chat_get(chat_id: str) -> dict[str, Any]:
-    try:
-        return chat.get(chat_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-
-
-class ChatRename(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-
-
-@app.put("/api/chats/{chat_id}")
-async def api_chat_rename(chat_id: str, req: ChatRename) -> dict[str, Any]:
-    try:
-        return chat.rename(chat_id, req.title)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-
-
-@app.delete("/api/chats/{chat_id}")
-async def api_chat_delete(chat_id: str) -> dict[str, bool]:
-    try:
-        chat.delete(chat_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    return {"ok": True}
-
-
-@app.post("/api/chat")
-async def api_chat(req: ChatRequest) -> dict[str, Any]:
-    """A question to the whole app: a read-only Claude run with the app overview; the answer goes into the conversation."""
-    _require_ai()  # before a new conversation is created
-    question = req.question.strip()
-    if req.chat_id:
-        try:
-            conv = chat.get(req.chat_id)
-        except FileNotFoundError as exc:
-            raise HTTPException(404, str(exc)) from exc
-    else:
-        conv = chat.create(question)
-    chat_id = conv["id"]
-    deck = None
-    if req.deck:
-        try:
-            deck = storage.load(req.deck)
-        except (FileNotFoundError, ValueError):
-            deck = None  # deleted meanwhile: the question still goes out, just without the focus
-
-    async def finish(job: Job, ok: bool, answer: str, _structured: Any = None) -> None:
-        if ok and answer:
-            entry = chat.add(chat_id, question, answer, cards=await _card_refs(answer), decks=_deck_refs(answer),
-                             deep=req.deep, **({"deck": deck["slug"]} if deck else {}))  # fmt: skip
-            job.emit(type="answer", entry=entry, chat_id=chat_id)
-            desktop.notify("Antwort von Claude", question[:140])
-        elif ok:
-            job.emit(type="error", text="Keine Antwort erhalten.")
-        if not (ok and answer) and not req.chat_id:  # a new conversation without an answer is not kept
-            try:
-                if not chat.get(chat_id).get("messages"):
-                    chat.delete(chat_id)
-            except FileNotFoundError:
-                pass
-        job.emit(type="done", ok=bool(ok and answer), deck=None)
-
-    prompt = chat_prompt(question, conv.get("messages") or [], deck=deck)
-    if req.deep:
-        started = _start(prompt, META_MODEL, read_only=True, finish=finish, effort=META_EFFORT)
-    else:
-        started = _start(prompt, req.model, read_only=True, finish=finish)
-    return {**started, "chat_id": chat_id, "title": conv["title"]}
-
-
-@app.post("/api/find-commander")
-async def api_find_commander(req: FinderRequest) -> dict[str, str]:
-    if not (req.prompt.strip() or req.feel or req.colors or req.themes):
-        raise HTTPException(400, "Beantworte mindestens eine Frage oder beschreibe deinen Wunsch.")
-    output_format = {"type": "json_schema", "schema": SUGGESTION_SCHEMA}
-    return _start(finder_prompt(req), req.model, output_format)
-
-
 class BlacklistUpdate(BaseModel):
     add: list[str] = []
     remove: list[str] = []
@@ -2185,6 +876,35 @@ async def api_deck_table_rule(slug: str, req: DeckTableRule) -> dict[str, Any]:
     return {"slug": slug, "table_rule": deck.get("table_rule"), "validation": deck.get("validation")}
 
 
+class DeckTarget(BaseModel):
+    bracket: int = Field(ge=1, le=5)
+    profile: PowerProfile | None = None
+
+
+@app.put("/api/decks/{slug}/target")
+async def api_deck_target(slug: str, req: DeckTarget) -> dict[str, Any]:
+    """Set the power the deck aims for (bracket + sub-tier/house rules); the check measures the cards against it."""
+    for attempt in range(3):
+        try:
+            deck = storage.load(slug)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        start_version = deck.get("version")
+        profile = req.profile.model_dump(exclude_none=True) if req.profile else None
+        deck["bracket"] = req.bracket
+        deck["power_profile"] = profile or None
+        await deckedit.revalidate(deck)
+        tier = TIER_LABELS.get((profile or {}).get("tier"))
+        deck["change_note"] = f"Ziel: {tier + ' ' if tier else ''}Bracket {req.bracket}"
+        try:
+            storage.save(deck, expect_version=start_version)
+            break
+        except ConflictError:
+            if attempt == 2:
+                raise
+    return {"slug": slug, "bracket": deck["bracket"], "power_profile": deck.get("power_profile"), "validation": deck.get("validation")}
+
+
 @app.get("/api/blacklist")
 async def api_blacklist() -> dict[str, Any]:
     return {"cards": blacklist.load(), "rules": blacklist.rules(), "catalog": blacklist.catalog()}
@@ -2286,7 +1006,7 @@ class EditRequest(BaseModel):
 
 @app.post("/api/decks/{slug}/cards")
 async def api_edit_cards(slug: str, req: EditRequest) -> dict[str, Any]:
-    """Change cards directly (no Claude run): re-validates and saves a new version."""
+    """Change cards directly: re-validates and saves a new version."""
     try:
         return await deckedit.edit_deck(
             slug, add=[a.model_dump() for a in req.add], remove=req.remove, set_qty=req.set_qty,
@@ -2572,9 +1292,7 @@ class SettingsUpdate(BaseModel):
     upscaler_path: str | None = None
     upscale_model: str | None = None
     descreen: str | None = None
-    ai_enabled: bool | None = None
     sync_interval: int | None = Field(default=None, ge=0, le=240)
-    phone_questions: bool | None = None
     desktop_notify: bool | None = None
 
 
@@ -2974,7 +1692,7 @@ def _sync_due(now: float) -> str | None:
 
 async def _sync_loop() -> None:
     """Background sync while the app runs: at the start, after local changes (debounced), every few minutes; plus a
-    presence report every minute (the phone shows whether this PC and Claude are ready)."""
+    presence report every minute (the phone shows whether this PC is running)."""
     while True:
         await asyncio.sleep(SYNC_TICK)
         try:
@@ -2985,8 +1703,7 @@ async def _sync_loop() -> None:
             cfg = sync_service.config()
             if cfg and not cfg.get("revoked") and now - _sync_state["last_presence"] >= PRESENCE_EVERY:
                 _sync_state["last_presence"] = now
-                ai = ai_status()
-                info = {"app": "pc", "ai": {"ready": bool(ai["available"]), "reason": ai.get("reason")}, "answers": _phone_enabled()}
+                info = {"app": "pc"}
                 _sync_state["online"] = await asyncio.to_thread(sync_service.presence, info)
         except asyncio.CancelledError:
             raise
@@ -2994,142 +1711,9 @@ async def _sync_loop() -> None:
             log.exception("Sync-Schleife")
 
 
-# --- questions from the phone app („Frag Claude“ as a job for this PC; the sync server hands them out) ---------
-
-PHONE_CLAIM_WAIT = 25  # seconds one claim waits on the server for a question
-PHONE_BEAT_EVERY = 20  # heartbeat while answering (the server frees a question after JOB_LEASE s of silence)
-PHONE_RETRY = 30  # seconds to wait after the server could not be reached
-PHONE_LOOK = 3  # seconds between two looks at what Claude is doing (sent on change)
-PHONE_LABELS = {
-    "Skill": "liest die Anleitung", "Read": "liest eine Referenz", "Glob": "sieht in den Anleitungen nach", "Grep": "sieht in den Anleitungen nach",
-    "ToolSearch": "bereitet die Werkzeuge vor", "app_overview": "verschafft sich einen Überblick", "list_decks": "liest deine Decks",
-    "load_deck": "sieht sich ein Deck an", "deck_games": "liest deine Partien", "opponent_decks": "liest deine Gegnerdecks",
-    "table_rules": "liest deine Tischregeln", "get_blacklist": "liest deine Blacklist", "get_cards": "liest Kartentexte",
-    "search_cards": "sucht Karten", "local_card_search": "durchsucht die Kartendatenbank", "similar_cards": "sucht ähnliche Karten",
-    "edhrec_recommendations": "prüft EDHREC-Empfehlungen", "edhrec_average_deck": "lädt ein EDHREC-Durchschnittsdeck",
-    "find_combos": "sucht Combos", "find_commanders": "sucht Commander", "bracket_rules": "liest die Bracket-Regeln",
-    "game_changers": "prüft Game Changer", "validate_deck": "prüft ein Deck", "list_deck_versions": "liest den Verlauf",
-    "compare_deck_versions": "vergleicht Versionen", "compare_decks": "vergleicht Decks", "collection_status": "prüft deine Sammlung",
-    "collection_search": "durchsucht deine Sammlung", "WebSearch": "recherchiert im Netz", "WebFetch": "liest eine Webseite",
-}  # fmt: skip
-_phone_state: dict[str, Any] = {"current": None, "answered": 0, "error": None}
-
-
-def _phone_enabled() -> bool:
-    """This PC answers questions from the phone: connected, the setting is on and Claude is ready here."""
-    cfg = sync_service.config()
-    if not cfg or cfg.get("revoked") or not settings_mod.load().get("phone_questions", True):
-        return False
-    return bool(ai_status()["available"])
-
-
-def _phone_label(job: Job) -> str:
-    """What Claude is doing right now, in plain words for the phone."""
-    for e in reversed(job.events):
-        if e.get("type") == "tool":
-            name, summary = e.get("name", ""), e.get("summary", "")
-            if name in ("load_deck", "deck_games") and summary.startswith("slug="):
-                try:
-                    deck = storage.load(summary[5:])["name"]
-                    return f"sieht sich „{deck}“ an" if name == "load_deck" else f"liest die Partien mit „{deck}“"
-                except Exception:
-                    pass
-            return PHONE_LABELS.get(name, "arbeitet")
-        if e.get("type") == "text":
-            return "schreibt die Antwort"
-    return "denkt nach"
-
-
-async def _phone_loop() -> None:
-    """While the app runs: wait on the sync server for questions from the phone and answer them one at a time."""
-    while True:
-        try:
-            if not await asyncio.to_thread(_phone_enabled):
-                await asyncio.sleep(PHONE_RETRY)
-                continue
-            got = await asyncio.to_thread(sync_service.claim_job, PHONE_CLAIM_WAIT)
-            _phone_state["error"] = None
-            if got:
-                await _answer_phone(got)
-        except asyncio.CancelledError:
-            raise
-        except RemoteError as exc:
-            _phone_state["error"] = str(exc)
-            await asyncio.sleep(PHONE_RETRY)
-        except Exception:
-            log.exception("Fragen vom Handy")
-            await asyncio.sleep(PHONE_RETRY)
-
-
-async def _answer_phone(q: dict[str, Any]) -> str:
-    """Answer one question from the phone with the app chat (read-only, like „Frag Claude“ here); the server writes
-    the answer into the conversation, the next sync brings it to this PC too. Returns the job's end status."""
-    result: dict[str, Any] = {}
-
-    async def finish(job: Job, ok: bool, answer: str, _structured: Any = None) -> None:
-        if ok and answer:
-            result.update(answer=answer, cards=await _card_refs(answer), decks=_deck_refs(answer))
-        else:
-            err = next((e["text"] for e in reversed(job.events) if e.get("type") == "error"), "")
-            result.update(error=err or "Keine Antwort erhalten.")
-        job.emit(type="done", ok=bool(ok and answer))
-
-    prompt = chat_prompt(q["question"], q.get("history") or [], phone=True)
-    model, effort = (META_MODEL, META_EFFORT) if q.get("deep") else (None, None)
-    job = Job(id=uuid.uuid4().hex[:12])
-    _register(job, _run_claude(job, prompt, model, read_only=True, finish=finish, effort=effort))
-    _phone_state["current"] = {"id": q["id"], "question": q["question"], "job": job.id, "started": time.time()}
-    stopped: dict[str, str] = {}
-
-    async def heartbeat() -> None:
-        sent, last = "", 0.0
-        while not job.done:
-            label = _phone_label(job)
-            if label != sent or time.time() - last >= PHONE_BEAT_EVERY:
-                try:
-                    status = await asyncio.to_thread(sync_service.job_progress, q["id"], label)
-                    sent, last = label, time.time()
-                    if status in ("cancelled", "taken", "done", "failed"):  # taken back on the phone, or another PC has it
-                        stopped["status"] = status
-                        if job.task:
-                            job.task.cancel()
-                        return
-                except RemoteError:
-                    pass  # offline for a moment: the answer still goes out at the end
-            await asyncio.sleep(PHONE_LOOK)
-
-    beat = asyncio.create_task(heartbeat())
-    try:
-        if job.task:
-            await asyncio.wait([job.task])
-    finally:
-        beat.cancel()
-        _phone_state["current"] = None
-    if stopped:
-        return stopped["status"]
-    status = ""
-    for attempt in range(3):
-        try:
-            status = await asyncio.to_thread(sync_service.job_finish, q["id"], result or {"error": "Abgebrochen."})
-            break
-        except RemoteError:
-            if attempt == 2:
-                raise
-            await asyncio.sleep(5)
-    _phone_state["answered"] += 1
-    desktop.notify("Frage vom Handy beantwortet", (q.get("question") or "")[:140])
-    try:
-        await _sync_now("frage vom handy")  # the answered conversation comes to this PC too
-    except Exception:
-        _mark_dirty()
-    return status
-
-
 def _sync_view() -> dict[str, Any]:
     return {**sync_service.status(), "running": _sync_state["running"], "online": _sync_state["online"],
-            "interval": _sync_interval(), "pending_revalidation": sync_service.pending_revalidation(),
-            "phone_questions": bool(settings_mod.load().get("phone_questions", True)),
-            "phone": {k: _phone_state[k] for k in ("current", "answered", "error")}}  # fmt: skip
+            "interval": _sync_interval(), "pending_revalidation": sync_service.pending_revalidation()}
 
 
 async def _sync_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:

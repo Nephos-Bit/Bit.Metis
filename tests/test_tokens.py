@@ -1,16 +1,15 @@
 """Tokens, emblems and markers: card data, deck list, printing them with the deck."""
 
-from conftest import MPC_SERVER, deck_lines
+from conftest import MPC_SERVER, deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import proxy, scryfall, settings, storage
 from mtgdeck.cards import deck_tokens
 from mtgdeck.gui.app import app
-from mtgdeck.mcp_server import mcp
 
 
 async def _deck():
-    await mcp.call_tool("save_deck", {"name": "Tokens", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
+    await save_deck(**{"name": "Tokens", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines(extra=["1 Pitiless Plunderer"])]})  # fmt: skip
     return storage.load("tokens")
 
@@ -63,7 +62,7 @@ async def test_own_quantity_per_token(tmp_path):
     assert {c["name"]: c["qty"] for c in (await proxy.plan(deck, tokens=2))["cards"] if c.get("token")}["The Monarch"] == 1
 
 
-async def test_token_qty_route_and_mcp(tmp_path):
+async def test_token_qty_route(tmp_path):
     await _deck()
     with TestClient(app) as client:
         r = client.post("/api/decks/tokens/print/token-qty", json={"counts": {"Treasure": 5}})
@@ -72,9 +71,6 @@ async def test_token_qty_route_and_mcp(tmp_path):
         assert client.post("/api/decks/sammel-abc/print/token-qty", json={"counts": {"Treasure": 1}}).status_code == 400
         plan = client.get("/api/decks/tokens/print/plan?tokens=2").json()
         assert {c["name"]: c["qty"] for c in plan["cards"] if c.get("token")} == {"Treasure": 5, "The Monarch": 1}
-    res = await mcp.call_tool("create_proxy_order", {"slug": "tokens", "token_counts": {"Treasure": 7, "The Monarch": 0}})
-    data = res.structured_content if hasattr(res, "structured_content") else __import__("json").loads(res[0].text)
-    assert data["quantity"] == 107 and proxy.load_token_qty("tokens") == {"Treasure": 7, "The Monarch": 0}
 
 
 def test_token_quantities_are_backed_up():

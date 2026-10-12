@@ -280,12 +280,8 @@ def offline(tmp_path, monkeypatch):
     monkeypatch.setattr(backup, "BACKUP_DIR", tmp_path / "backups")
     monkeypatch.setattr(collection, "COLLECTION_FILE", tmp_path / "collection.json")
     monkeypatch.setattr(settings, "SETTINGS_FILE", tmp_path / "settings.json")
-    # the GUI's sign-in check would start the Claude CLI: fake it (test_desktop.py tests the real one with a fake CLI)
-    from mtgdeck.gui import app as gui_app
     from mtgdeck.gui import desktop as gui_desktop
 
-    monkeypatch.setattr(gui_app, "_cli_auth_status", lambda cli: {"logged_in": True, "method": "test"})
-    gui_app._auth_cache.clear()
     gui_desktop.reset()
     monkeypatch.setattr(proxy, "PROXIES_DIR", tmp_path / "proxies")
     for env in ("MTG_AUTOFILL_PATH", "MTG_MPCFILL_SERVER", "MTG_CARDBACK", "MTG_SYNC_PUBLIC_URL"):
@@ -303,3 +299,39 @@ def deck_lines(extra: list[str] | None = None, fillers: int | None = None) -> li
     base = ["1 Sol Ring", "1 Cultivate", *extra]
     n_fill = fillers if fillers is not None else 99 - 36 - len(base)
     return base + [f"1 Filler {i}" for i in range(n_fill)] + ["18 Forest", "18 Swamp"]
+
+
+async def save_deck(name: str, commanders: list[str], cards: list[Any], bracket: int, *, slug: str | None = None,
+                    table_rule: str | None = None, change_note: str = "", **fields: Any) -> dict[str, Any]:
+    """Validate and save a deck the way the app stores one (``cards``: ``"1 Sol Ring"`` lines or ``{name, qty,
+    category}``). Returns the saved deck plus ``legal``."""
+    from mtgdeck.validate import validate_deck
+
+    entries = [c if isinstance(c, dict) else {"name": c.split(" ", 1)[1], "qty": int(c.split(" ", 1)[0])} for c in cards]
+    lines = [f"{c.get('qty', 1)} {c['name']}" for c in entries]
+    from mtgdeck.power import PowerProfile
+
+    profile = fields.pop("power_profile", None)
+    profile = PowerProfile(**profile) if isinstance(profile, dict) else profile
+    if table_rule is None and slug:
+        try:
+            table_rule = storage.load(slug).get("table_rule")
+        except FileNotFoundError:
+            table_rule = None
+    rs = tablerules.resolve_id(table_rule)
+    result = await validate_deck(commanders, lines, bracket, currency=fields.get("currency", "eur"), budget=fields.get("budget"),
+                                 proxy=bool(fields.get("proxy")), profile=profile, table_rule=rs["id"] if rs else table_rule or None)  # fmt: skip
+    result.pop("_card_data")
+    categories = {c["name"]: c.get("category", "") for c in entries}
+    for original, english in result["renamed"].items():
+        if original in categories:
+            categories[english] = categories.pop(original)
+    if fields.get("proxy"):
+        fields["budget"] = None
+    deck = {"name": name, "commanders": result["commanders"], "bracket": bracket, "description": "", "strategy": "", "currency": "eur",
+            "power_profile": profile.model_dump(exclude_defaults=True) if profile else None, "change_note": change_note,
+            "table_rule": rs["id"] if rs else None, **fields,
+            "cards": [{**c, "category": categories.get(c["name"], "")} for c in result.pop("cards")], "validation": result}  # fmt: skip
+    deck["slug"] = storage.slug(slug) if slug else storage.unique_slug(name)
+    saved = storage.save(deck)
+    return {**storage.load(saved["slug"]), "legal": result["legal"]}

@@ -40,8 +40,7 @@ def _item(key: str, label: str, status: str, value: Any, target: str, text: str,
 def check(deck: dict[str, Any]) -> dict[str, Any]:
     """``{"status", "items": [{key, label, status, value, target, text, why, fix, cards}], "summary"}``.
 
-    ``fix`` is ``{"role": ...}`` (candidates for that role can be added without AI) and/or
-    ``{"focus": ...}`` (a focus text for AI upgrade suggestions)."""
+    ``fix`` is ``{"role": ...}`` (candidates for that role to add) or None."""
     validation = deck.get("validation") or {}
     stats = validation.get("stats") or {}
     roles: dict[str, list[str]] = stats.get("roles") or {}
@@ -60,7 +59,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         "lands", "Länder", status, lands, f"{target - 1}–{target + 1}", text,
         "Ohne genug Länder bleibst du mit teuren Karten auf der Hand sitzen; mit zu vielen ziehst du später nur noch Länder. "
         f"Der Richtwert hängt vom durchschnittlichen Manawert ({fmt.num(avg)}) und deiner Ramp ab.",
-        {"focus": f"Manabasis: auf etwa {target} Länder kommen"} if status != GREEN else None,
+        None,
     ))  # fmt: skip
 
     items.append(_item(
@@ -68,7 +67,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         f"{len(ramp)} Karten beschleunigen dein Mana.",
         "Ramp (Manasteine, Land-Suche) bringt dich schneller zu deinem Commander und deinen starken Karten – "
         "in Commander mit 40 Leben und vier Spielern besonders wichtig.",
-        {"role": "ramp", "focus": "mehr Ramp"}, ramp,
+        {"role": "ramp"}, ramp,
     ))  # fmt: skip
 
     draw = roles.get("card_draw", [])
@@ -77,7 +76,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         f"{len(draw)} Karten ziehen dir zusätzliche Karten.",
         "Wer mehr Karten zieht, hat mehr Möglichkeiten. Ohne Kartenzug ist die Hand nach ein paar Zügen leer; "
         "wiederholbare Quellen (jede Runde eine Karte) sind besser als einmalige.",
-        {"role": "card_draw", "focus": "mehr Kartenzug"}, draw,
+        {"role": "card_draw"}, draw,
     ))  # fmt: skip
 
     removal = sorted(set(roles.get("removal", [])) | set(roles.get("counterspell", [])))
@@ -86,7 +85,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         f"{len(removal)} Karten entfernen gezielt Bedrohungen.",
         "Mit Removal hältst du gefährliche Karten der Gegner auf – etwa einen Commander, der sonst das Spiel gewinnt. "
         "Flexible Antworten (jede bleibende Karte, zu Spontanzauber-Tempo) sind am wertvollsten.",
-        {"role": "removal", "focus": "mehr gezieltes Removal"}, removal,
+        {"role": "removal"}, removal,
     ))  # fmt: skip
 
     wipes = roles.get("board_wipe", [])
@@ -95,7 +94,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         f"{len(wipes)} Karten räumen das Spielfeld." + (" Für Decks mit vielen eigenen Kreaturen kann das Absicht sein." if len(wipes) < 2 else ""),
         "Ein Board Wipe ist die Notbremse, wenn ein Gegner zu viel aufgebaut hat. Decks mit vielen eigenen Kreaturen "
         "spielen bewusst weniger davon.",
-        {"role": "board_wipe", "focus": "1–2 Board Wipes"}, wipes,
+        {"role": "board_wipe"}, wipes,
     ))  # fmt: skip
 
     curve = stats.get("mana_curve") or {}
@@ -109,7 +108,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         f"Ø Manawert {avg:.2f}".replace(".", ",") + f", {big} Karten kosten 6 oder mehr.",
         "Günstige Karten kannst du früh und mehrere pro Zug spielen. Ist die Kurve zu hoch, passiert in den ersten "
         "Zügen nichts, während die Gegner schon angreifen.",
-        {"focus": "Manakurve senken: teure Karten durch günstigere ersetzen"} if status != GREEN else None,
+        None,
     ))  # fmt: skip
 
     wincons = [c["name"] for c in deck.get("cards", []) if c.get("category") == "Win Condition"]
@@ -124,7 +123,7 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
         "wincons", "Siegbedingungen", status, n_win, "2–4", text,
         "Irgendwie muss das Spiel enden: große Angreifer, Lebensentzug an alle, eine Combo. Ohne klare Siegwege "
         "ziehen sich Partien und du verlierst gegen Decks, die schneller zum Punkt kommen.",
-        {"focus": "klarere Siegbedingungen"} if status != GREEN else None, wincons,
+        None, wincons,
     ))  # fmt: skip
 
     table = validation.get("table_rule")
@@ -137,7 +136,6 @@ def check(deck: dict[str, Any]) -> dict[str, Any]:
             + "; ".join(v.split(": ", 1)[-1] for v in bad[:3]),
             "Die Tischregel ist das, worauf sich deine Runde geeinigt hat. Ein Deck, das sie bricht, sorgt am Tisch für "
             "Frust – tausche die genannten Karten aus oder wähle eine andere Tischregel.",
-            {"focus": f"Tischregel „{table['name']}“ einhalten"} if bad else None,
         ))  # fmt: skip
 
     worst = max((i["status"] for i in items), key=_RANK.__getitem__, default=GREEN)

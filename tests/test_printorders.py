@@ -3,17 +3,16 @@
 import time
 
 import pytest
-from conftest import deck_lines
+from conftest import deck_lines, save_deck
 from fastapi.testclient import TestClient
 
 from mtgdeck import collection, printorders, proxy
 from mtgdeck.gui import app as app_mod
 from mtgdeck.gui.app import app
-from mtgdeck.mcp_server import mcp
 
 
 async def _deck(name="Order Deck"):
-    await mcp.call_tool("save_deck", {"name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
+    await save_deck(**{"name": name, "commanders": ["Meren of Clan Nel Toth"], "bracket": 3,
         "cards": [{"name": l.split(" ", 1)[1], "qty": int(l.split(" ", 1)[0])} for l in deck_lines()]})  # fmt: skip
     return name.lower().replace(" ", "-")
 
@@ -111,18 +110,12 @@ def test_token_search():
     assert client.get("/api/tokens/search", params={"q": "zzz"}).json() == []
 
 
-async def test_order_from_deck_route_and_mcp():
+async def test_order_from_deck_route():
     slug = await _deck("Aesi Test")
     client = TestClient(app)
     oid = client.post("/api/orders", json={}).json()["id"]
     r = client.post(f"/api/orders/{oid}/items", json={"deck": slug, "names": ["Sol Ring", "Cultivate"]}).json()
     assert r["counts"]["cards"] == 2 and r["counts"]["sources"] == ["Aesi Test"]
-    res = str(await mcp.call_tool("update_print_order", {"order": "Claude-Bestellung", "add_cards": [{"name": "Sol Ring", "qty": 3}],
-                                                         "add_tokens": [{"name": "Treasure", "qty": 50}], "source": "Upgrades"}))  # fmt: skip
-    assert "Claude-Bestellung" in res and "'slots': 53" in res
-    again = str(await mcp.call_tool("update_print_order", {"order": "claude-bestellung", "from_deck": slug}))
-    assert "'slots': 153" in again
-    assert "Claude-Bestellung" in str(await mcp.call_tool("print_orders", {}))
 
 
 async def test_added_since_a_rebuild():
