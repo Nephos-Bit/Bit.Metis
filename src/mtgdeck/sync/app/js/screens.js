@@ -1,7 +1,7 @@
 // The four tabs and their detail screens. Each screen returns {html, fab, bar, bind}; main.js draws it.
 
 import { currentDeck, deckBy, failedOps, gamesOf, isDemo, isPending, op, oppBy, oppName, oppSub, pendingCount, serverCall, setPref, shortName, state } from "./data.js";
-import { draftCount } from "./build.js";
+import { draftCount, tabletSized } from "./build.js";
 import { roundCard, running, startSheet } from "./round.js";
 import { cardSheet, editOpponentSheet, gameDetailSheet, gameSheet, newDeckSheet, opponentSheet, settingsSheet, switchDeckSheet } from "./forms.js";
 import * as scry from "./scry.js";
@@ -148,8 +148,8 @@ export function decks() {
         ${thumb(d.commanders[0], d.colors)}
         <span class="main"><span class="title">${esc(d.name)}</span>
           <span class="subtitle">${pips(d.colors)} ${esc(d.level)} · ${esc(recordText(d.record))}</span></span>${icon("chev-r", "sm chev")}</a>`).join("")}</div>`
-      : empty("decks", "Noch keine Decks", "Leg hier ein neues an – oder baue und importiere Decks am PC, nach dem Abgleich erscheinen sie hier.")}`;
-  return { html, fab: { label: "Neues Deck", run: newDeckSheet }, bar: { title: "Decks", watch: ".large-title h1" } };
+      : empty("decks", "Noch keine Decks", tabletSized() ? "Leg hier ein neues an – oder baue und importiere Decks am PC, nach dem Abgleich erscheinen sie hier." : "Baue Decks am PC oder auf dem iPad – nach dem Abgleich erscheinen sie hier.")}`;
+  return { html, fab: tabletSized() ? { label: "Neues Deck", run: newDeckSheet } : null, bar: { title: "Decks", watch: ".large-title h1" } };
 }
 
 const SEGMENTS = [["rule0", "Rule 0"], ["karten", "Karten"], ["partien", "Partien"]];
@@ -171,14 +171,14 @@ export function deck(slug, seg = "rule0") {
       ${d.description ? `<p class="sub muted">${esc(d.description)}</p>` : ""}
       <div class="recordbar"><div class="w"><b>${r.wins}</b><span>Siege</span></div><div class="l"><b>${r.losses}</b><span>Niederlagen</span></div>
         <div><b>${r.games ? Math.round((100 * r.wins) / r.games) : 0} %</b><span>${plural(r.games, "Partie", "Partien")}</span></div></div>
-      ${drafts ? `<a class="draft-note" href="#/bauen/${esc(d.slug)}">${icon("edit", "sm")}<span class="main"><b>${plural(drafts, "ungespeicherte Änderung", "ungespeicherte Änderungen")}</b>
+      ${!tabletSized() ? "" : drafts ? `<a class="draft-note" href="#/bauen/${esc(d.slug)}">${icon("edit", "sm")}<span class="main"><b>${plural(drafts, "ungespeicherte Änderung", "ungespeicherte Änderungen")}</b>
           <small>Weiterbauen und speichern</small></span>${icon("chev-r", "sm chev")}</a>`
         : `<a class="btn tint build-open" href="#/bauen/${esc(d.slug)}">${icon("edit", "sm")}Deck bauen</a>`}
     </div>
     <div class="seg-sticky"><div class="segmented" role="tablist">${SEGMENTS.map(([k, label]) => `<button type="button" role="tab" data-seg="${k}" aria-pressed="${k === seg}" aria-selected="${k === seg}">${label}</button>`).join("")}</div></div>
     <div id="seg-body">${segment(d, seg)}</div>`;
   return {
-    html, bar: { title: d.name, back: { href: "#/decks", label: "Decks" }, watch: ".detail-head h1", action: { label: "Bauen", run: () => { location.hash = `#/bauen/${d.slug}`; } } },
+    html, bar: { title: d.name, back: { href: "#/decks", label: "Decks" }, watch: ".detail-head h1", action: tabletSized() ? { label: "Bauen", run: () => { location.hash = `#/bauen/${d.slug}`; } } : null },
     bind(el) {
       for (const b of $$("[data-seg]", el)) b.addEventListener("click", () => {
         history.replaceState(history.state, "", `#/decks/${slug}/${b.dataset.seg}`);

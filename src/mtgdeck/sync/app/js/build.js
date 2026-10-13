@@ -20,6 +20,10 @@ const FILTERS = [["", "Beliebt"], ["otag:ramp", "Ramp"], ["otag:draw", "Kartenzu
   ["otag:counterspell", "Counter"], ["otag:tutor", "Tutoren"], ["t:creature", "Kreaturen"], ["t:land -t:basic", "Länder"]];
 const SHOW_STEP = 30;
 
+/** The builder is for tablets only (iPad Air 11": 820 × 1180), never on a phone – also not a phone turned sideways,
+ *  so the shorter side of the screen decides. */
+export const tabletSized = () => Math.min(screen.width, screen.height) >= 700;
+
 // ---------- the draft ------------------------------------------------------------------------------------------
 
 /** Several copies allowed: basic lands and cards that say so (Relentless Rats, Shadowborn Apostle …). */
@@ -123,6 +127,11 @@ let mounted = null;  // the slug of the builder on screen
 
 export function builder(slug) {
   const d = deckBy(slug);
+  if (!tabletSized()) {
+    mounted = null;
+    return { html: `<div class="empty">${icon("decks")}<h3>Decks baust du auf dem iPad</h3><p>Auf dem Handy siehst du deine Decks – bauen geht auf dem iPad oder am PC.</p>
+      <div class="btn-col"><a class="btn tint" href="#/decks">Zu den Decks</a></div></div>`, bar: { title: "Deck bauen", back: { href: "#/decks", label: "Decks" }, always: true } };
+  }
   if (!d) {
     mounted = null;
     return { html: `<div class="empty">${icon("decks")}<h3>Deck nicht gefunden</h3><p>Vielleicht wurde es am PC gelöscht.</p></div>`,
