@@ -39,7 +39,7 @@ def _deck(slug: str, d: dict[str, Any], games: list[dict[str, Any]]) -> dict[str
         "colors": v.get("color_identity") or "", "bracket": d.get("bracket"),
         "tier": (d.get("power_profile") or {}).get("tier"), "level": level_text(d), "proxy": bool(d.get("proxy")),
         "legal": v.get("legal"), "description": rule0._first_sentence(d.get("description") or d.get("strategy") or "", 220),
-        "version": d.get("version"), "updated": d.get("updated"),
+        "version": d.get("version"), "updated": d.get("updated"), "checking": bool(d.get("needs_revalidation")),
         "rule0": {"rows": r0["rows"], "text": r0["text"]},
         "cards": [{"name": c["name"], "qty": int(c.get("qty") or 1), "category": c.get("category") or ""}
                   for c in d.get("cards") or [] if isinstance(c, dict) and c.get("name")],

@@ -5,6 +5,7 @@
 //
 // Modes: "none" (not paired – the welcome screen), "demo" (example data, nothing leaves the phone), "live".
 
+import { cached } from "./scry.js";
 import { load, nowIso, save, uid } from "./util.js";
 
 const KEY_DEVICE = "amtisch.device";
@@ -393,6 +394,26 @@ function apply(snap, op) {
       if ((p.note || "").trim()) o.notes = [{ id: p.note_id || `${op.id}-n`, text: p.note.trim(), at: op.at }];
       snap.opponents.push(o);
     }
+  } else if (op.type === "deck.new") {
+    const d = p.deck || {};
+    if (snap.decks.some((x) => x.slug === d.slug)) return;
+    const level = `Bracket ${d.bracket || 3}`;
+    snap.decks.unshift({ slug: d.slug, name: d.name || d.commanders.join(" + "), commanders: d.commanders, colors: d.colors || "", bracket: d.bracket || 3,
+      tier: null, level, proxy: false, legal: null, description: "", version: 1, updated: op.at, checking: true, cards: [],
+      rule0: { rows: [{ label: "Stufe", value: level }, { label: "Commander", value: d.commanders.join(" + ") }], text: "" }, record: recordOf([]) });
+  } else if (op.type === "deck.edit") {
+    const d = snap.decks.find((x) => x.slug === p.deck);
+    if (!d) return;
+    const cards = new Map(d.cards.map((c) => [c.name, { ...c }]));
+    for (const a of p.add || []) {
+      const c = cards.get(a.name);
+      if (c) c.qty += a.qty || 1; else cards.set(a.name, { name: a.name, qty: a.qty || 1, category: a.category || "Synergy" });
+    }
+    for (const n of p.remove || []) cards.delete(n);
+    for (const [n, q] of Object.entries(p.set_qty || {})) { const c = cards.get(n); if (c && q > 0) c.qty = q; else cards.delete(n); }
+    for (const [n, k] of Object.entries(p.set_category || {})) { const c = cards.get(n); if (c) c.category = k; }
+    d.cards = [...cards.values()].sort((a, b) => a.name.localeCompare(b.name));
+    Object.assign(d, { checking: true, version: (d.version || 0) + 1, updated: op.at });
   } else if (op.type === "opponent.delete") {
     snap.opponents = snap.opponents.filter((o) => o.id !== p.id);
   } else {
@@ -426,6 +447,9 @@ function faced(o, g) {
 }
 
 function recompute(snap) {
+  for (const d of snap.decks) {  // a deck the PC has not checked yet has no colour identity: take the commanders'
+    if (!d.colors) d.colors = [..."WUBRG"].filter((c) => d.commanders.some((n) => (cached(n)?.colors || "").includes(c))).join("");
+  }
   snap.games.sort((a, b) => String(b.played).localeCompare(String(a.played)));
   for (const d of snap.decks) d.record = recordOf(snap.games.filter((g) => g.deck === d.slug));
   const names = Object.fromEntries(snap.decks.map((d) => [d.slug, d.name]));

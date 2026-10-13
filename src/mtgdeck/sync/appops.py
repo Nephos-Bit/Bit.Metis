@@ -6,7 +6,12 @@ An operation is ``{"id", "type", "payload", "at"}``; ``apply(op, docs)`` takes t
 remembers applied ids, so an operation sent twice (the phone retries after a lost answer) changes nothing.
 
 Types: ``game.add`` · ``game.delete`` · ``opponent.add`` · ``opponent.update`` · ``opponent.note`` ·
-``opponent.note_delete`` · ``opponent.delete``.
+``opponent.note_delete`` · ``opponent.delete`` · ``deck.new`` · ``deck.edit``.
+
+Decks built on the phone or tablet are saved like ``storage.save`` does it: a new version with a history entry and a
+full snapshot (``decks/.versions/<slug>/vNNNN.json``, returned by ``apply`` next to the deck). Card data never reaches
+the server, so the check (legality, bracket, price) is left to the PC: the deck gets ``needs_revalidation`` and the
+desktop app checks it after its next sync (``service.revalidate_pending``).
 """
 
 from __future__ import annotations
@@ -18,14 +23,20 @@ from typing import Any
 
 from ..games import HOW, ISSUES, RESULTS
 from ..opponents import MAX_NOTES, TAGS
+from ..storage import _metrics, diff, level_text
+from .files import snapshot_path
 
 OPPONENTS = "decks/.opponents.json"
 SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,80}")
 ID_RE = re.compile(r"[A-Za-z0-9_-]{1,40}")
 ISO_RE = re.compile(r"\d{4}-\d\d-\d\dT[\d:.]+(Z|[+-]\d\d:\d\d)?")
-TYPES = ("game.add", "game.delete", "opponent.add", "opponent.update", "opponent.note", "opponent.note_delete", "opponent.delete")
+TYPES = ("game.add", "game.delete", "opponent.add", "opponent.update", "opponent.note", "opponent.note_delete", "opponent.delete",
+         "deck.new", "deck.edit")  # fmt: skip
 ROUND_KINDS = ("life", "cmd", "poison", "turn", "note")  # entries in the Runden-Helfer's log (js/round.js)
 ROUND_EVENTS_MAX = 400
+CATEGORIES = ("Ramp", "Draw", "Removal", "Board Wipe", "Counterspell", "Tutor", "Protection", "Synergy", "Win Condition", "Utility", "Land")
+DECK_CARDS_MAX = 250  # distinct cards in one deck (a Commander deck has at most 99)
+EDIT_MAX = 200  # changes in one deck.edit
 
 
 class OpError(ValueError):
@@ -55,6 +66,10 @@ def paths(op: dict[str, Any]) -> list[str]:
         return [f"decks/{slug}.json", f"decks/.games/{slug}.json", OPPONENTS]
     if t == "game.delete":
         return [f"decks/.games/{_deck_slug(p)}.json"]
+    if t == "deck.new":
+        return [f"decks/{_deck_slug(p.get('deck') or {}, 'slug')}.json"]
+    if t == "deck.edit":
+        return [f"decks/{_deck_slug(p)}.json"]
     return [OPPONENTS]
 
 
@@ -130,11 +145,129 @@ def _round(value: Any) -> dict[str, Any] | None:
     }  # fmt: skip
 
 
+def _card_name(value: Any) -> str:
+    name = _text(value, 160)
+    if not name:
+        raise OpError("Kartenname fehlt")
+    return name
+
+
+def _qty(value: Any) -> int:
+    qty = _int(value, 0, 99)
+    if qty is None:
+        raise OpError("Ungültige Anzahl")
+    return qty
+
+
+def _category(value: Any) -> str | None:
+    return value if value in CATEGORIES else None
+
+
+def _save_version(deck: dict[str, Any], old: dict[str, Any] | None, note: str, at: str) -> dict[str, Any]:
+    """Like ``storage.save`` for a content change: next version, history entry, snapshot; ``{path: doc}``."""
+    deck["version"] = int((old or {}).get("version") or 0) + 1
+    deck["created"] = (old or {}).get("created") or at
+    deck["updated"] = at
+    deck["needs_revalidation"] = True
+    change = diff(old, deck) if old else {"added": [], "removed": []}
+    deck["history"] = list((old or {}).get("history") or []) + [
+        {"version": deck["version"], "at": at, "note": note, **change, "from": level_text(old) if old else None,
+         "to": level_text(deck), **_metrics(deck)}  # fmt: skip
+    ]
+    snap = {k: v for k, v in deck.items() if k != "history"}
+    return {f"decks/{deck['slug']}.json": deck, snapshot_path(deck["slug"], deck["version"]): snap}
+
+
+def _deck_new(p: dict[str, Any], docs: dict[str, Any], at: str) -> dict[str, Any]:
+    d = p.get("deck") or {}
+    slug = _deck_slug(d, "slug")
+    commanders = [_text(c, 160) for c in d.get("commanders") or [] if _text(c, 160)][:2]
+    if not commanders:
+        raise OpError("Wähle den Commander des Decks.")
+    if docs.get(f"decks/{slug}.json") is not None:
+        raise OpError("Ein Deck mit diesem Namen gibt es schon – bitte anders nennen.")
+    deck = {
+        "name": _text(d.get("name"), 120) or " + ".join(commanders), "slug": slug, "commanders": commanders,
+        "bracket": _int(d.get("bracket"), 1, 5) or 3, "description": "", "strategy": "", "budget": None, "proxy": False,
+        "power_profile": None, "currency": "eur", "notes": "", "cards": [], "validation": None,
+    }  # fmt: skip
+    return _save_version(deck, None, "Leer angelegt (Am Tisch)", at)
+
+
+def _change_note(added: list[str], removed: list[str], changed: list[str], note: str) -> str:
+    parts = ["+ " + ", ".join(added)] if added else []
+    parts += ["− " + ", ".join(removed)] if removed else []
+    parts += [", ".join(changed)] if changed else []
+    auto = "Am Tisch: " + "; ".join(parts)
+    return f"{note} ({auto})" if note else auto
+
+
+def _deck_edit(p: dict[str, Any], docs: dict[str, Any], at: str) -> dict[str, Any]:
+    """Like ``deckedit.edit_deck``: ``add`` [{name, qty, category}] (quantities add up), ``remove`` [names],
+    ``set_qty`` {name: qty} (0 removes), ``set_category`` {name: category}. Applied to the server's current deck,
+    so changes made on the PC meanwhile stay. Nothing changed → nothing is written."""
+    slug = _deck_slug(p)
+    old = docs.get(f"decks/{slug}.json")
+    if not isinstance(old, dict):
+        raise OpError("Dieses Deck gibt es nicht mehr – am PC gelöscht?")
+    adds, removes = p.get("add") or [], p.get("remove") or []
+    set_qty, set_cat = p.get("set_qty") or {}, p.get("set_category") or {}
+    if not all(isinstance(x, list) for x in (adds, removes)) or not all(isinstance(x, dict) for x in (set_qty, set_cat)):
+        raise OpError("Ungültige Daten")
+    if len(adds) + len(removes) + len(set_qty) + len(set_cat) > EDIT_MAX:
+        raise OpError("Zu viele Änderungen auf einmal")
+    deck = copy.deepcopy(old)
+    cards: dict[str, dict[str, Any]] = {c["name"]: c for c in deck.get("cards") or [] if isinstance(c, dict) and c.get("name")}
+    commanders = set(deck.get("commanders") or [])
+    added: list[str] = []
+    removed: list[str] = []
+    changed: list[str] = []
+    for a in adds:
+        name, qty = _card_name((a or {}).get("name")), max(1, _qty((a or {}).get("qty", 1)))
+        if name in commanders:
+            raise OpError(f"{name} ist der Commander des Decks.")
+        if name in cards:
+            cards[name]["qty"] = min(99, int(cards[name].get("qty") or 1) + qty)
+        else:
+            cards[name] = {"name": name, "qty": qty, "category": _category((a or {}).get("category")) or "Synergy"}
+        added.append(f"{qty}× {name}" if qty > 1 else name)
+    for name in removes:
+        if cards.pop(_card_name(name), None) is not None:
+            removed.append(name)
+    for name, qty in set_qty.items():
+        qty = _qty(qty)
+        if name not in cards:
+            continue
+        before = int(cards[name].get("qty") or 1)
+        if qty == 0:
+            cards.pop(name)
+            removed.append(name)
+        elif qty != before:
+            cards[name]["qty"] = qty
+            changed.append(f"{name} {before}→{qty}")
+    for name, cat in set_cat.items():
+        cat = _category(cat)
+        if name in cards and cat and cards[name].get("category") != cat:
+            cards[name]["category"] = cat
+            changed.append(f"{name} → {cat}")
+    if not (added or removed or changed):
+        return {}
+    if len(cards) > DECK_CARDS_MAX:
+        raise OpError("Das sind zu viele Karten für ein Deck.")
+    deck["cards"] = sorted(cards.values(), key=lambda c: c["name"])
+    return _save_version(deck, old, _change_note(added, removed, changed, _text(p.get("note"), 200)), at)
+
+
 def apply(op: dict[str, Any], docs: dict[str, Any]) -> dict[str, Any]:
-    """Apply ``op`` to ``docs`` (``{path: value or None}`` for ``paths(op)``); returns ``{path: new value}``."""
+    """Apply ``op`` to ``docs`` (``{path: value or None}`` for ``paths(op)``); returns ``{path: new value}`` – for the
+    deck operations also the new version's snapshot, a path ``paths(op)`` does not list."""
     t, p, at = op["type"], op.get("payload") or {}, str(op.get("at") or "")
     if not ISO_RE.fullmatch(at):
         raise OpError("Ungültiger Zeitpunkt")
+    if t == "deck.new":
+        return _deck_new(p, docs, at)
+    if t == "deck.edit":
+        return _deck_edit(p, docs, at)
     out: dict[str, Any] = {}
     if t == "game.add":
         g = p.get("game") or {}

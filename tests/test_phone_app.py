@@ -410,3 +410,80 @@ def test_card_search_explains_missing_credit(monkeypatch):
     with pytest.raises(cardsearch.SearchError) as exc:
         cardsearch.ask_model(cardsearch.config({"key": "sk-ant-x"}), "ramp")
     assert exc.value.status == 402 and "Guthaben" in str(exc.value)
+
+
+def test_deck_new_and_edit_save_versions_like_the_desktop_app():
+    from mtgdeck.sync.appops import OpError, apply, paths
+
+    new = _op("deck.new", {"deck": {"slug": "kaalia", "name": "Kaalia", "commanders": ["Kaalia of the Vast"], "bracket": 2}}, "opnew0001")
+    assert paths(new) == ["decks/kaalia.json"]
+    out = apply(new, {"decks/kaalia.json": None})
+    deck = out["decks/kaalia.json"]
+    assert deck["version"] == 1 and deck["cards"] == [] and deck["bracket"] == 2 and deck["needs_revalidation"]
+    assert deck["history"][0]["note"] == "Leer angelegt (Am Tisch)" and out["decks/.versions/kaalia/v0001.json"]["version"] == 1
+    with pytest.raises(OpError, match="gibt es schon"):
+        apply(new, {"decks/kaalia.json": deck})
+    with pytest.raises(OpError, match="Commander"):
+        apply(_op("deck.new", {"deck": {"slug": "x", "commanders": []}}, "opnew0002"), {"decks/x.json": None})
+
+    edit = _op("deck.edit", {"deck": "kaalia", "add": [{"name": "Sol Ring", "category": "Ramp"}, {"name": "Mountain", "qty": 3, "category": "Land"},
+                                                      {"name": "Odd", "category": "Nonsense"}],
+                             "set_qty": {"Mountain": 5}}, "opedit001")  # fmt: skip
+    out = apply(edit, {"decks/kaalia.json": deck})
+    deck2 = out["decks/kaalia.json"]
+    assert {c["name"]: (c["qty"], c["category"]) for c in deck2["cards"]} == {"Sol Ring": (1, "Ramp"), "Mountain": (5, "Land"), "Odd": (1, "Synergy")}
+    assert deck2["version"] == 2 and deck2["history"][-1]["note"].startswith("Am Tisch: + Sol Ring, 3× Mountain, Odd")
+    assert deck2["history"][-1]["added"] == ["5 Mountain", "Odd", "Sol Ring"] and "decks/.versions/kaalia/v0002.json" in out
+    assert deck["version"] == 1  # the input stays as it was
+
+    out = apply(_op("deck.edit", {"deck": "kaalia", "remove": ["Odd"], "set_category": {"Sol Ring": "Draw"}, "note": "Test"}, "opedit002"),
+                {"decks/kaalia.json": deck2})  # fmt: skip
+    deck3 = out["decks/kaalia.json"]
+    assert [c["name"] for c in deck3["cards"]] == ["Mountain", "Sol Ring"] and deck3["history"][-1]["note"] == "Test (Am Tisch: − Odd; Sol Ring → Draw)"
+    assert apply(_op("deck.edit", {"deck": "kaalia", "set_qty": {"Mountain": 5}}, "opedit003"), {"decks/kaalia.json": deck3}) == {}
+    with pytest.raises(OpError, match="Commander"):
+        apply(_op("deck.edit", {"deck": "kaalia", "add": [{"name": "Kaalia of the Vast"}]}, "opedit004"), {"decks/kaalia.json": deck3})
+    with pytest.raises(OpError, match="nicht mehr"):
+        apply(_op("deck.edit", {"deck": "kaalia", "add": [{"name": "Sol Ring"}]}, "opedit005"), {"decks/kaalia.json": None})
+
+
+def test_a_deck_built_on_the_tablet_reaches_the_pc_and_gets_checked(tmp_path):
+    from mtgdeck import storage
+    from mtgdeck.sync import Roots, service
+    from mtgdeck.sync.remote import HttpTransport
+
+    app = create_app(tmp_path / "server")
+    client = TestClient(app)
+    pc = Roots.current()
+    service.connect(f"http://testserver/koppeln#{app.state.devices.new_code()['code']}", name="PC", roots=pc, client=client)
+    storage.save({"name": "Meren", "commanders": ["Meren of Clan Nel Toth"], "bracket": 3, "cards": [{"name": "Sol Ring", "qty": 1, "category": "Ramp"}]})
+    assert service.run(roots=pc, client=client)["ok"]
+    tablet = HttpTransport("http://testserver", client=client).claim(app.state.devices.new_code()["code"], "iPad", "phone")
+    auth = {"Authorization": f"Bearer {tablet['token']}"}
+
+    ops = [_op("deck.new", {"deck": {"slug": "meren-2", "name": "Meren 2", "commanders": ["Meren of Clan Nel Toth"]}}, "opdeck001"),
+           _op("deck.edit", {"deck": "meren-2", "add": [{"name": "Sol Ring", "category": "Ramp"}, {"name": "Forest", "qty": 2, "category": "Land"}]}, "opdeck002"),
+           _op("deck.edit", {"deck": "meren", "add": [{"name": "Forest", "category": "Land"}], "set_qty": {"Sol Ring": 0}}, "opdeck003")]  # fmt: skip
+    res = client.post("/api/app/ops", json={"ops": ops}, headers=auth).json()
+    assert [r["ok"] for r in res["results"]] == [True, True, True], res
+    data = client.get("/api/app/data", headers=auth).json()
+    built = next(d for d in data["decks"] if d["slug"] == "meren-2")
+    assert built["checking"] and built["version"] == 2 and {c["name"] for c in built["cards"]} == {"Sol Ring", "Forest"}
+
+    run = service.run(roots=pc, client=client)
+    assert run["ok"]
+    assert storage.load("meren-2")["version"] == 2 and len(storage.versions("meren-2")) == 2
+    assert [c["name"] for c in storage.load("meren")["cards"]] == ["Forest"] and storage.load("meren")["version"] == 2
+    assert sorted(service.pending_revalidation()) == ["meren", "meren-2"]
+    assert any(d["slug"] == "meren-2" for d in storage.list_decks())
+
+    from mtgdeck.gui.app import app as gui_app
+
+    gui = TestClient(gui_app)
+    assert gui.get("/api/decks").status_code == 200
+    assert gui.get("/api/decks/meren-2").status_code == 200  # not checked yet: still opens
+    import asyncio
+
+    assert sorted(asyncio.run(service.revalidate_pending())) == ["meren", "meren-2"]
+    checked = storage.load("meren-2")
+    assert checked["validation"]["commanders"] == ["Meren of Clan Nel Toth"] and "needs_revalidation" not in checked

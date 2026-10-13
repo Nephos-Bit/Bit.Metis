@@ -4,13 +4,14 @@
 import { boot, onChange, state } from "./data.js";
 import { applyTheme } from "./forms.js";
 import { codeFrom, welcome } from "./pair.js";
+import { builder } from "./build.js";
 import { roundScreen } from "./round.js";
 import * as scry from "./scry.js";
 import { deck, decks, gegner, karten, opponent, paint, tisch } from "./screens.js";
 import { clearToast, sheetIsOpen, toast, topbar } from "./ui.js";
 import { $, $$, esc, icon, reducedMotion } from "./util.js";
 
-const TABS = ["tisch", "decks", "gegner", "karten", "runde"];  // "runde" = the Runden-Helfer, no tab of its own
+const TABS = ["tisch", "decks", "gegner", "karten", "runde", "bauen"];  // "runde" = the Runden-Helfer, "bauen" = deck builder: no tabs of their own
 const scrolls = {};
 let current = null;  // {key, depth}
 let linkCode = null;  // code from a pairing link
@@ -26,6 +27,7 @@ function screenFor(r) {
   if (r.tab === "decks" && r.id) return deck(r.id, r.seg || "rule0");
   if (r.tab === "gegner" && r.id) return opponent(r.id);
   if (r.tab === "runde") return roundScreen();
+  if (r.tab === "bauen") return builder(r.id);
   return { tisch, decks, gegner, karten }[r.tab]();
 }
 
@@ -44,7 +46,9 @@ function draw({ keepScroll = false } = {}) {
   main.classList.toggle("has-fab", fabOn);
   document.body.classList.toggle("has-fab", fabOn);
   document.body.classList.toggle("no-tabs", state.mode === "none");
-  document.body.classList.toggle("immersive", !!s.immersive);  // the round screen: no tab bar
+  document.body.classList.toggle("immersive", !!s.immersive);  // the round screen, the builder: no tab bar
+  document.body.classList.toggle("wide", !!s.wide);  // the builder uses the whole width of an iPad
+  if (!s.wide) document.body.classList.remove("has-build-bar");
   keepAwake(!!s.wake);
   const fab = $("#fab");
   fab.hidden = !fabOn;
@@ -53,7 +57,7 @@ function draw({ keepScroll = false } = {}) {
     fab.firstElementChild.addEventListener("click", s.fab.run);
   }
   for (const a of $$(".tabbar a")) {
-    if (a.dataset.tab === r.tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    if (a.dataset.tab === (r.tab === "bauen" ? "decks" : r.tab)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
   if (!same) {
     s.bind?.(main);

@@ -254,9 +254,13 @@ def run_op(store: SyncStore, devices: Devices, op: dict[str, Any], device_id: st
                 docs[path] = decode("json", d["data"]) if alive else None
                 seqs[path] = d["seq"] if d is not None else None
             changed = appops.apply(op, docs)
+            for path in changed:  # a deck's new snapshot was not read before
+                if path not in seqs:
+                    d = store.get(path)
+                    seqs[path] = d["seq"] if d is not None else None
             if changed:
-                store.put_many([{"path": p, "kind": "json", "data": None if v is None else canonical("json", v), "deleted": v is None,
-                                 "base_seq": seqs[p]} for p, v in changed.items()], device=device_id)  # fmt: skip
+                store.put_many([{"path": p, "kind": kind_of(p) or "json", "data": None if v is None else canonical(kind_of(p) or "json", v),
+                                 "deleted": v is None, "base_seq": seqs[p]} for p, v in changed.items()], device=device_id)  # fmt: skip
             devices.op_record(op_id, device_id, True)
             return {"id": op_id, "ok": True}
         except SyncConflict:  # a PC wrote the same document meanwhile: read again
