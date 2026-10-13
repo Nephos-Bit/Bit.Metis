@@ -123,6 +123,26 @@ cd /opt/mtgdeck-sync && docker compose exec sync mtg-sync-server pair
 - **Sicherung einspielen** auf einem verbundenen PC: Die Daten der Sicherung werden mit denen der anderen Geräte
   zusammengeführt. Gelöscht wird dabei auf anderen Geräten nichts.
 
+## Kartensuche mit KI (Handy)
+
+Im Karten-Tab der Handy-App kannst du unter **Beschreiben** in eigenen Worten sagen, was eine Karte tun soll (dazu
+optional Farbidentität und Kartentyp). Der Server lässt Claude daraus eine Scryfall-Suche machen; das Handy
+fragt dann Scryfall und zeigt die Karten. Farben, Typ und „in Commander erlaubt“ setzt die App selbst dazu.
+
+- **Schlüssel holen:** platform.claude.com (Claude Console) → *API Keys* → *Create Key* (wird nur einmal angezeigt).
+  Die Console wird getrennt vom Claude-Abo abgerechnet: unter *Billing* muss Guthaben da sein.
+- **Einrichten:** Handy → Einstellungen → *Suche mit KI* → Claude-API-Schlüssel einfügen, Modell wählen → *Speichern*.
+  Der Schlüssel liegt danach nur auf dem Server (`sync.sqlite`) und wird nie wieder ans Handy geschickt.
+- **Modell:** Standard ist Claude Haiku 5.5 (schnell, ≈ 0,03 Cent pro Suche). Sonnet 5.5 (≈ 0,5 Cent) und Opus 5.5
+  (≈ 2 Cent) sind genauer bei verzwickten Beschreibungen. Die Kosten sind geschätzt.
+- **Alternativ per Server-Einstellung** (gewinnt vor dem Handy): `MTG_AI_KEY`, `MTG_AI_MODEL` in der
+  `compose.yml` unter `sync: environment:` setzen, dann `docker compose up -d`.
+- **Auch am PC:** Karten-Tab eines Decks → *Bearbeiten* → „Keinen Namen im Kopf? …“. Der PC fragt über den Sync-Server,
+  nutzt also denselben Schlüssel und dasselbe Modell (einrichten geht auch dort).
+- **Gespeicherte Antworten:** Dieselbe Beschreibung (auch umformuliert, solange dieselben Wörter vorkommen) mit demselben
+  Modell kostet nur einmal; Farben und Typ ändern kostet nichts. Der Server merkt sich bis zu 5.000 Antworten 180 Tage lang.
+- Höchstens 12 neue Suchen pro Minute und Gerät.
+
 ## Updates
 
 - **Automatisch:** Jede Stunde prüft der Timer, ob es neue Images von Sync-Server oder Caddy gibt, und startet nur

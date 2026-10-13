@@ -20,7 +20,7 @@ async function api(path, opts = {}) {
     throw new Error("Keine Verbindung zur App – läuft mtg-gui noch? Bitte neu starten und die Seite neu laden.");
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(errorText(res, data));
+  if (!res.ok) throw Object.assign(new Error(errorText(res, data)), { status: res.status });
   return data;
 }
 
@@ -1280,6 +1280,146 @@ $("#similar-grid").addEventListener("click", async (e) => {
   } catch (err) { fail(err); }
 });
 $("#similar-close").addEventListener("click", () => $("#similar").close());
+
+// ---- card search by description: the sync server asks Claude for a Scryfall query, Scryfall answers ----
+const DESC_COLORS = [["W", "Weiß"], ["U", "Blau"], ["B", "Schwarz"], ["R", "Rot"], ["G", "Grün"], ["C", "Farblos"]];
+const DESC_TYPES = [["creature", "Kreatur"], ["instant", "Spontanzauber"], ["sorcery", "Hexerei"], ["artifact", "Artefakt"],
+  ["enchantment", "Verzauberung"], ["planeswalker", "Planeswalker"], ["land", "Land"]];
+const describe = { slug: null, query: "", page: 1, busy: false };
+
+function deckColors() {
+  const ci = new Set();
+  for (const n of currentDeck?.commanders || []) for (const c of currentDeck.card_data?.[n]?.color_identity || []) ci.add(c);
+  return ci.size ? [...ci] : ["C"];
+}
+function describeChips(box, items, on) {
+  box.innerHTML = items.map(([v, l]) => `<button type="button" class="chip" data-v="${v}" aria-pressed="${on.includes(v)}">${esc(l)}</button>`).join("");
+}
+const pickedChips = (box) => [...box.querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.v);
+
+function openDescribe() {
+  if (describe.slug !== currentDeck.slug) {  // a new deck: its colours, a fresh form
+    describe.slug = currentDeck.slug;
+    describeChips($("#describe-colors"), DESC_COLORS, deckColors());
+    describeChips($("#describe-types"), DESC_TYPES, []);
+    $("#describe-text").value = "";
+    describeShow(null);
+  }
+  $("#describe").showModal();
+  $("#describe-text").focus();
+}
+for (const box of ["#describe-colors", "#describe-types"]) {
+  $(box).addEventListener("click", (e) => {
+    const b = e.target.closest(".chip");
+    if (!b) return;
+    const on = b.getAttribute("aria-pressed") !== "true";
+    b.setAttribute("aria-pressed", String(on));
+    if (box === "#describe-colors") {  // "Farblos" and colours exclude each other
+      for (const o of $(box).querySelectorAll(".chip")) if (o !== b && on && (b.dataset.v === "C") !== (o.dataset.v === "C")) o.setAttribute("aria-pressed", "false");
+    }
+  });
+}
+
+function describeShow(got, { append = false } = {}) {
+  const grid = $("#describe-grid");
+  $("#describe-query").hidden = !got;
+  $("#describe-more").hidden = !got?.has_more;
+  if (!got) { grid.innerHTML = ""; $("#describe-hint").textContent = ""; return; }
+  const cur = (currentDeck.currency || "eur") === "usd" ? "price_usd" : "price_eur";
+  const inDeck = new Set([...currentDeck.cards.map((c) => c.name), ...(edit ? edit.add.keys() : [])]);
+  const html = got.cards.map((c) => `<button type="button" class="similar${inDeck.has(c.name) ? " picked" : ""}" data-name="${esc(c.name)}">
+      ${c.image ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : `<div class="noimg">${esc(c.name)}</div>`}
+      <span class="sim-name">${inDeck.has(c.name) ? "✓ " : ""}${esc(c.name)}</span>
+      <span class="muted small">${esc(c.type_line || "")}${c[cur] ? ` · ${esc(fmtPrice(c[cur], currentDeck.currency))}` : ""}${ownershipBadge(c.name, 1) ? " · " + ownershipBadge(c.name, 1) : ""}</span></button>`).join("");
+  grid.innerHTML = append ? grid.innerHTML + html : html;
+  if (!append) {
+    $("#describe-q").value = got.used ?? describe.query;
+    $("#describe-explain").textContent = got.explain || "";
+    const broader = got.used && got.broader && got.used === got.broader && got.used !== got.query;
+    $("#describe-hint").textContent = !got.total ? "Keine Karten gefunden – anders beschreiben oder die Suche anpassen."
+      : `${fmtNum(got.total)} ${got.total === 1 ? "Karte" : "Karten"}${broader ? " · genau so gab es nichts, das ist die breitere Suche" : ""} · Klick merkt eine Karte im Deck vor.`;
+  }
+}
+
+async function describeRun(fn) {
+  if (describe.busy) return;
+  describe.busy = true;
+  $("#describe-go").disabled = $("#describe-q-run").disabled = true;
+  $("#describe-setup").hidden = true;
+  $("#describe-hint").textContent = "Suche läuft …";
+  try { await fn(); }
+  catch (err) {
+    $("#describe-hint").textContent = err.message;
+    if (err.status === 409 && /eingerichtet/.test(err.message)) describeSetup();
+  } finally {
+    describe.busy = false;
+    $("#describe-go").disabled = $("#describe-q-run").disabled = false;
+  }
+}
+
+$("#describe-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = $("#describe-text").value.trim();
+  if (text.length < 3) { $("#describe-hint").textContent = "Beschreib kurz, was die Karte tun soll."; return; }
+  describeRun(async () => {
+    describeShow(null);
+    $("#describe-hint").textContent = "Claude baut die Suche …";
+    const got = await api("/api/cards/describe", { method: "POST", body: { text, colors: pickedChips($("#describe-colors")), types: pickedChips($("#describe-types")) } });
+    describe.query = got.used; describe.page = 1;
+    describeShow(got);
+  });
+});
+$("#describe-query").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = $("#describe-q").value.trim();
+  if (!q) return;
+  describeRun(async () => {
+    const got = await api(`/api/cards/query?q=${enc(q)}`);
+    describe.query = q; describe.page = 1;
+    describeShow({ ...got, used: q, explain: "Deine angepasste Suche" });
+  });
+});
+$("#describe-more").addEventListener("click", () => describeRun(async () => {
+  const got = await api(`/api/cards/query?q=${enc(describe.query)}&page=${describe.page + 1}`);
+  describe.page += 1;
+  describeShow(got, { append: true });
+}));
+$("#describe-grid").addEventListener("click", async (e) => {
+  const b = e.target.closest(".similar");
+  if (!b || b.classList.contains("picked")) return;
+  try {
+    if (!edit) setEditing(true);
+    const added = await addCard(b.dataset.name, 1);
+    b.classList.add("picked");
+    b.querySelector(".sim-name").textContent = "✓ " + added;
+    renderCards(currentDeck);
+    toast(`${added} vorgemerkt – mit „Speichern & prüfen“ übernehmen.`);
+  } catch (err) { fail(err); }
+});
+
+async function describeSetup() {
+  const box = $("#describe-setup");
+  box.hidden = false;
+  try {
+    const cfg = await api("/api/cards/describe/setup");
+    $("#describe-model").innerHTML = (cfg.models || []).map((m) => `<option value="${esc(m.id)}"${m.id === cfg.model ? " selected" : ""}>${esc(m.label)} – ${esc(m.cost)}</option>`).join("");
+  } catch (err) { $("#describe-hint").textContent = err.message; }
+  $("#describe-key").focus();
+}
+$("#describe-setup").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const key = $("#describe-key").value.trim();
+  if (!key) return;
+  try {
+    await api("/api/cards/describe/setup", { method: "PUT", body: { key, model: $("#describe-model").value || null } });
+    $("#describe-key").value = "";
+    $("#describe-setup").hidden = true;
+    toast("Suche mit KI eingerichtet", "ok");
+    $("#describe-form").requestSubmit();
+  } catch (err) { fail(err); }
+});
+$("#describe-open").addEventListener("click", openDescribe);
+$("#describe-close").addEventListener("click", () => $("#describe").close());
 
 // hover preview of card images (list view, hand, swaps)
 const preview = $("#preview");

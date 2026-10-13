@@ -90,6 +90,14 @@ class HttpTransport:
             raise (AuthError if r.status_code == 401 else RemoteError)(text, r.status_code)
         return r
 
+    def describe(self, text: str, colors: list[str], types: list[str]) -> dict[str, Any]:
+        """The card search by description (the server asks Claude): ``{query, broader, explain}``."""
+        return self._call("POST", "/api/app/cards/describe", json={"text": text, "colors": colors, "types": types}).json()
+
+    def ai(self, change: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The server's AI search settings (never the key); ``change`` = ``{key?, model?}`` to set them."""
+        return (self._call("PUT", "/api/app/ai", json=change) if change is not None else self._call("GET", "/api/app/ai")).json()
+
     def health(self) -> dict[str, Any]:
         try:
             data = self._call("GET", "/api/health").json()

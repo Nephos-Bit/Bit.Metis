@@ -20,6 +20,7 @@
   <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
   <symbol id="i-cards" viewBox="0 0 24 24"><rect x="8" y="3" width="12" height="16" rx="2"/><path d="M4 7v11a3 3 0 0 0 3 3h8"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M11 3.5 12.8 8.7 18 10.5 12.8 12.3 11 17.5 9.2 12.3 4 10.5 9.2 8.7z"/><path d="M18.5 15.5v5M16 18h5"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
@@ -209,6 +210,7 @@
                 <option>Protection</option><option>Synergy</option><option>Win Condition</option><option>Utility</option><option>Land</option>
               </select>
               <button type="submit" class="btn"><svg class="icon"><use href="#i-plus"/></svg>Hinzufügen</button>
+              <button type="button" class="btn ghost" id="describe-open" ><svg class="icon"><use href="#i-sparkle"/></svg>Keinen Namen im Kopf? Beschreib, was die Karte tun soll …</button>
             </form>
             <div id="cards" class="cards"></div>
             <div id="edit-bar" class="edit-bar" hidden>
@@ -1233,6 +1235,39 @@
     <button type="button" class="btn" id="prints-more-btn">Mehr laden</button>
     <button type="button" class="btn ghost" id="prints-all-btn">Alle laden</button>
   </div>
+</dialog>
+
+<dialog id="describe" class="dialog">
+  <div class="dialog-head">
+    <h2>Karte beschreiben</h2>
+    <button type="button" class="icon-btn" id="describe-close" aria-label="Schließen"><svg class="icon"><use href="#i-x"/></svg></button>
+  </div>
+  <form id="describe-form" class="describe-form" autocomplete="off">
+    <textarea id="describe-text" rows="2" maxlength="400" aria-label="Was soll die Karte tun?" placeholder="Was soll die Karte tun? z. B. „zieht eine Karte, wenn eine meiner Kreaturen stirbt“"></textarea>
+    <div class="describe-filters">
+      <div><span class="muted small">Farbidentität</span><div class="chips-row" id="describe-colors" role="group" aria-label="Farbidentität"></div></div>
+      <div><span class="muted small">Kartentyp (optional)</span><div class="chips-row" id="describe-types" role="group" aria-label="Kartentyp"></div></div>
+    </div>
+    <div class="describe-actions"><button type="submit" class="btn primary" id="describe-go"><svg class="icon"><use href="#i-sparkle"/></svg>Karten finden</button></div>
+  </form>
+  <form id="describe-setup" class="describe-setup panel" autocomplete="off" hidden>
+    <p class="small">Die Suche läuft über deinen Sync-Server. Er braucht einmal einen Claude-API-Schlüssel (Claude Console → API Keys → Create Key); danach gilt er auch fürs Handy.</p>
+    <div class="describe-setup-row">
+      <input id="describe-key" type="password" placeholder="sk-ant-…" aria-label="Claude-API-Schlüssel">
+      <select id="describe-model" aria-label="Modell"></select>
+      <button type="submit" class="btn primary">Speichern</button>
+    </div>
+  </form>
+  <form id="describe-query" class="describe-query" autocomplete="off" hidden>
+    <span class="muted small" id="describe-explain"></span>
+    <div class="describe-setup-row">
+      <input id="describe-q" class="mono" spellcheck="false" aria-label="Scryfall-Suche">
+      <button type="submit" class="btn" id="describe-q-run"><svg class="icon"><use href="#i-search"/></svg>Suchen</button>
+    </div>
+  </form>
+  <p id="describe-hint" class="muted small" aria-live="polite"></p>
+  <div id="describe-grid" class="similar-grid"></div>
+  <div class="describe-actions"><button type="button" class="btn ghost" id="describe-more" hidden>Mehr zeigen</button></div>
 </dialog>
 
 <dialog id="similar" class="dialog">

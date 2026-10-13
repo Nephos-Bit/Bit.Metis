@@ -256,6 +256,7 @@ class Block:
             raise ImportError('blocked ' + name)
 sys.meta_path.insert(0, Block())
 from mtgdeck.sync.server import create_app, app_snapshot, run_op
+from mtgdeck.sync import cardsearch
 import pytest
 from fastapi.testclient import TestClient
 app = create_app({str(tmp_path)!r})
@@ -264,3 +265,148 @@ print(app_snapshot(app.state.store)['decks'], TestClient(app).get('/app/sw.js').
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "[] 200"
+
+
+def test_card_search_composes_fixed_filters_and_cleans_the_model_query():
+    from mtgdeck.sync import cardsearch
+
+    assert cardsearch.compose('o:"draw a card"', ["B", "G"], ["creature"]) == 'o:"draw a card" id<=bg t:creature f:commander'
+    assert cardsearch.compose("otag:ramp OR otag:mana-rock", ["C"], ["artifact", "land"]) == \
+        "(otag:ramp OR otag:mana-rock) id:c (t:artifact OR t:land) f:commander"
+    assert cardsearch.compose("otag:removal", ["C", "R"], ["nonsense"]) == "otag:removal id<=r f:commander"
+    assert cardsearch.clean_query('  o:"dies"\n f:modern  legal:commander kw:flying ') == 'o:"dies" kw:flying'
+
+
+def test_card_search_asks_the_model_and_maps_errors():
+    import pytest
+    from mtgdeck.sync import cardsearch
+
+    seen = {}
+
+    def fake(cfg, text):
+        seen["cfg"], seen["text"] = cfg, text
+        return '<think>hm</think>Here: {"query": "o:\\"whenever a creature you control dies\\" o:\\"draw\\"", "broader": "otag:death-trigger otag:draw", "explain": "Kartenzug, wenn eigene Kreaturen sterben"}'
+
+    cfg = cardsearch.config({"key": "sk-secret-1234"})
+    got = cardsearch.describe("zieht eine Karte wenn meine Kreatur stirbt", ["B"], [], cfg, ask=fake)
+    assert got["query"] == 'o:"whenever a creature you control dies" o:"draw" id<=b f:commander'
+    assert got["broader"] == "otag:death-trigger otag:draw id<=b f:commander" and got["explain"].startswith("Kartenzug")
+    assert seen["text"] == "zieht eine Karte wenn meine Kreatur stirbt" and seen["cfg"]["model"] == cardsearch.DEFAULT_MODEL
+    with pytest.raises(cardsearch.SearchError) as exc:
+        cardsearch.describe("zieht Karten", [], [], cardsearch.config({}), ask=fake)
+    assert exc.value.status == 409
+    with pytest.raises(cardsearch.SearchError):
+        cardsearch.describe("zieht Karten", [], [], cfg, ask=lambda c, t: "Sorry, no idea.")
+    shown = cardsearch.public(cfg)
+    assert {k: shown[k] for k in ("configured", "model", "from_env", "key_hint")} == {"configured": True, "model": cardsearch.DEFAULT_MODEL, "from_env": False, "key_hint": "…1234"}
+    assert [m["id"] for m in shown["models"]] == list(cardsearch.MODELS) and "think" not in shown["models"][0]
+
+
+def test_card_search_cache_key_ignores_wording_but_not_meaning():
+    from mtgdeck.sync import cardsearch
+
+    cfg = cardsearch.config({"key": "sk-x"})
+    key = lambda t: cardsearch.cache_key(t, cfg)  # noqa: E731
+    assert key("zieht eine Karte, wenn eine meiner Kreaturen stirbt") == key("Wenn meine Kreatur stirbt, ziehe ich eine Karte!")
+    assert key("draw a card when a creature dies") == key("When a creature dies, draw a card")
+    assert key("zieht eine Karte") != key("zieht keine Karte")  # negations count
+    assert key("zieht zwei Karten") != key("zieht drei Karten")
+    assert key("macht Schätze") != cardsearch.cache_key("macht Schätze", {**cfg, "model": "claude-opus-5-5"})
+
+
+def test_card_search_routes_keep_the_key_on_the_server(tmp_path, monkeypatch):
+    from mtgdeck.sync import cardsearch
+
+    for var in ("MTG_AI_KEY", "MTG_AI_MODEL", "MTG_AI_URL"):
+        monkeypatch.delenv(var, raising=False)
+    app = create_app(tmp_path)
+    client = TestClient(app)
+    token = app.state.devices.claim(app.state.devices.new_code()["code"], "Handy", "phone")["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/app/ai").status_code == 401
+    assert client.get("/api/app/ai", headers=auth).json()["configured"] is False
+    r = client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"})
+    assert r.status_code == 409 and "eingerichtet" in r.json()["detail"]
+
+    r = client.put("/api/app/ai", headers=auth, json={"key": " sk-abcdefgh9876 ", "model": "claude-sonnet-5-5"})
+    assert {k: r.json()[k] for k in ("configured", "model", "key_hint")} == {"configured": True, "model": "claude-sonnet-5-5", "key_hint": "…9876"}
+    assert client.put("/api/app/ai", headers=auth, json={"model": "gpt-9"}).status_code == 400
+    assert "sk-abcdefgh9876" not in client.get("/api/app/ai", headers=auth).text
+
+    calls = []
+    monkeypatch.setattr(cardsearch, "ask_model", lambda cfg, text: calls.append(cfg) or '{"query": "o:treasure", "explain": "Schätze"}')
+    monkeypatch.setattr(cardsearch.translate, "__defaults__", (cardsearch.ask_model,))
+    r = client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken", "colors": ["R"], "types": ["creature"]})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"query": "o:treasure id<=r t:creature f:commander", "broader": "", "explain": "Schätze", "cached": False}
+    assert calls[0]["key"] == "sk-abcdefgh9876" and calls[0]["model"] == "claude-sonnet-5-5"
+    # the same description again (other colours, spacing, case): from the cache, no new request
+    r = client.post("/api/app/cards/describe", headers=auth, json={"text": "  Macht   Schatzmarken. ", "colors": ["G"]})
+    assert r.json() == {"query": "o:treasure id<=g f:commander", "broader": "", "explain": "Schätze", "cached": True} and len(calls) == 1
+    client.put("/api/app/ai", headers=auth, json={"model": "claude-haiku-5-5"})  # another model asks anew
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).json()["cached"] is False and len(calls) == 2
+
+    for i in range(cardsearch.PER_MINUTE):
+        client.post("/api/app/cards/describe", headers=auth, json={"text": f"macht {i} Schatzmarken"})
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht viele Schatzmarken"}).status_code == 429
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).status_code == 200  # cached: no limit
+
+    assert client.put("/api/app/ai", headers=auth, json={"key": ""}).json()["configured"] is False
+    monkeypatch.setenv("MTG_AI_KEY", "sk-from-env-0000")
+    assert client.get("/api/app/ai", headers=auth).json()["from_env"] is True
+
+
+def test_card_search_calls_the_claude_messages_api(monkeypatch):
+    import io
+    import json
+
+    import pytest
+    from mtgdeck.sync import cardsearch
+
+    sent = {}
+
+    class Answer(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout):
+        sent["url"], sent["headers"], sent["body"] = req.full_url, dict(req.header_items()), json.loads(req.data)
+        return Answer(json.dumps({"content": [{"type": "text", "text": '{"query": "otag:ramp"}'}], "stop_reason": "end_turn"}).encode())
+
+    monkeypatch.setattr(cardsearch.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.delenv("MTG_AI_URL", raising=False)
+    text = cardsearch.ask_model(cardsearch.config({"key": "sk-ant-x"}), "ramp")
+    assert text == '{"query": "otag:ramp"}' and sent["url"] == "https://api.anthropic.com/v1/messages"
+    assert sent["headers"]["X-api-key"] == "sk-ant-x" and sent["headers"]["Anthropic-version"] == cardsearch.API_VERSION
+    assert "Authorization" not in sent["headers"] and sent["headers"]["User-agent"] == cardsearch.USER_AGENT
+    body = sent["body"]
+    assert body["model"] == cardsearch.DEFAULT_MODEL and body["system"] == cardsearch.PROMPT
+    assert body["messages"] == [{"role": "user", "content": "ramp"}] and "temperature" not in body
+    assert body["thinking"] == {"type": "disabled"}
+    cardsearch.ask_model({**cardsearch.config({"key": "sk-ant-x"}), "model": "claude-sonnet-5-5"}, "ramp")
+    assert sent["body"]["thinking"] == {"type": "between_tools"}
+    cardsearch.ask_model({**cardsearch.config({"key": "sk-ant-x"}), "model": "claude-opus-5-5"}, "ramp")
+    assert "thinking" not in sent["body"] and sent["body"]["output_config"] == {"effort": "low"}
+
+    monkeypatch.setattr(cardsearch.urllib.request, "urlopen", lambda req, timeout: Answer(b'{"content": [], "stop_reason": "refusal"}'))
+    with pytest.raises(cardsearch.SearchError):
+        cardsearch.ask_model(cardsearch.config({"key": "sk-ant-x"}), "ramp")
+
+
+def test_card_search_explains_missing_credit(monkeypatch):
+    import io
+    import urllib.error
+
+    import pytest
+    from mtgdeck.sync import cardsearch
+
+    def no_funds(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 402, "Payment Required", {}, io.BytesIO(b'{"type": "error", "error": {"type": "billing_error"}}'))
+
+    monkeypatch.setattr(cardsearch.urllib.request, "urlopen", no_funds)
+    with pytest.raises(cardsearch.SearchError) as exc:
+        cardsearch.ask_model(cardsearch.config({"key": "sk-ant-x"}), "ramp")
+    assert exc.value.status == 402 and "Guthaben" in str(exc.value)

@@ -300,3 +300,36 @@ def test_run_lists_decks_first_and_counts_the_rest(net):
     storage.save({"name": "Meren", "commanders": ["Meren of Clan Nel Toth"], "bracket": 2, "cards": []})
     run = service.run(roots=a, client=client)
     assert run["outgoing"][0] == "Deck „Meren“" and len(run["outgoing"]) == 12 and run["outgoing_more"] == 4
+
+
+def test_gui_card_search_by_description_goes_through_the_sync_server(net, monkeypatch):
+    from mtgdeck.gui import app as gui
+    from mtgdeck.sync import cardsearch
+
+    app, client, a, b, use, pair, code = net
+    monkeypatch.setenv("MTG_SYNC_AUTO", "0")
+    for var in ("MTG_AI_KEY", "MTG_AI_MODEL", "MTG_AI_URL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(service, "HttpTransport", lambda url, token="", client=None: HttpTransport(url, token, client=net[1]))
+    asked = []
+    monkeypatch.setattr(cardsearch.translate, "__defaults__", (lambda cfg, text: asked.append(text) or
+                        '{"query": "o:\\"nothing like this\\"", "broader": "otag:ramp", "explain": "Rampe"}',))  # fmt: skip
+    with TestClient(gui.app) as g:
+        r = g.post("/api/cards/describe", json={"text": "bringt Länder ins Spiel"})
+        assert r.status_code == 409 and "Sync" in r.json()["detail"]  # not paired yet
+        g.post("/api/sync/connect", json={"link": f"{URL}/koppeln#{code()}", "name": "PC"})
+        r = g.post("/api/cards/describe", json={"text": "bringt Länder ins Spiel"})
+        assert r.status_code == 409 and "eingerichtet" in r.json()["detail"]
+        setup = g.put("/api/cards/describe/setup", json={"key": "sk-ant-pc-12345678", "model": "claude-haiku-5-5"}).json()
+        assert setup["configured"] and "sk-ant" not in json.dumps(setup) and len(setup["models"]) == 3
+
+        r = g.post("/api/cards/describe", json={"text": "bringt Länder ins Spiel", "colors": ["G"]})
+        body = r.json()
+        assert r.status_code == 200, body
+        assert body["used"] == "otag:ramp id<=g f:commander" and body["total"] == 3 and not body["cached"]  # precise one: no hits
+        assert {"name", "image", "type_line"} <= set(body["cards"][0]) and "oracle_text" not in body["cards"][0]
+        again = g.post("/api/cards/describe", json={"text": "Ins Spiel bringt Länder", "colors": ["B", "G"]}).json()
+        assert again["cached"] and again["used"] == "otag:ramp id<=bg f:commander" and len(asked) == 1
+
+        assert g.get("/api/cards/query", params={"q": "otag:ramp", "page": 1}).json()["total"] == 3
+        assert g.get("/api/cards/query", params={"q": "  "}).status_code == 400

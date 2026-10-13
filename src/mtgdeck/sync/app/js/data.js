@@ -102,7 +102,7 @@ function rebuild() {
 
 async function api(path, init = {}) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), init.timeout || TIMEOUT_MS);
   try {
     const headers = { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}), ...(init.headers || {}) };
     if (state.device?.token) headers.Authorization = `Bearer ${state.device.token}`;
@@ -112,6 +112,19 @@ async function api(path, init = {}) {
   } finally { clearTimeout(timer); }
 }
 const detail = async (res) => { try { return (await res.json()).detail || `Fehler ${res.status}`; } catch { return `Fehler ${res.status}`; } };
+
+/** Server calls that are no sync operations (AI card search): the JSON answer, or an Error with the German detail. */
+export async function serverCall(path, { method = "GET", body, timeout } = {}) {
+  if (state.mode !== "live") throw new Error("Nur mit deinem Server verbunden möglich – in der Vorschau geht das nicht.");
+  let res;
+  try {
+    res = await api(path, { method, timeout, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch {
+    throw new Error(state.online ? "Der Server antwortet nicht – bitte noch einmal versuchen." : "Ohne Netz geht das nicht.");
+  }
+  if (!res.ok) { const e = new Error(await detail(res)); e.status = res.status; throw e; }
+  return res.json();
+}
 
 /** Pair this phone with a code from the PC; then load the data. */
 export async function connect(code, name) {
