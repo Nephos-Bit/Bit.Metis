@@ -129,6 +129,8 @@ Im Karten-Tab der Handy-App kannst du unter **Beschreiben** in eigenen Worten sa
 optional Farbidentität und Kartentyp). Der Server lässt ein Sprachmodell daraus eine Scryfall-Suche machen; das Handy
 fragt dann Scryfall und zeigt die Karten. Farben, Typ und „in Commander erlaubt“ setzt die App selbst dazu.
 
+- **Schlüssel holen:** opencode.ai/console → Workspace mit dem Go-Abo → *Keys* → *Add Service Account* → darin
+  *Add API Key*, Berechtigung *Inference only* → *Create key* (wird nur einmal angezeigt).
 - **Einrichten:** Handy → Einstellungen → *Suche mit KI* → OpenCode-API-Schlüssel einfügen → *Speichern*. Der Schlüssel
   liegt danach nur auf dem Server (`sync.sqlite`) und wird nie wieder ans Handy geschickt.
 - **Abo:** Standard ist OpenCode Go (`https://opencode.ai/inference/go/v1`, Modell `deepseek-v4-flash`). Mit

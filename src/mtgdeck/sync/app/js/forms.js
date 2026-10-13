@@ -635,7 +635,7 @@ function aiPage({ pop, close, redraw: again, onSaved }) {
           <span class="subtitle wrap">steht in der Server-Einstellung MTG_AI_KEY</span></span></div></div>`
         : `<input class="input" id="ai-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"
           placeholder="${c.configured ? `gespeichert (${esc(c.key_hint)}) – neu eingeben zum Ändern` : "sk-…"}">`}
-      <p class="hint-small">Zu finden in der OpenCode-Konsole (opencode.ai) unter „API Keys“. Er bleibt auf deinem Sync-Server und wird nie wieder ans Handy geschickt.</p>
+      <p class="hint-small">In der OpenCode-Konsole (opencode.ai/console) unter „Keys“: Service Account anlegen → „Add API Key“ mit „Inference only“. Er bleibt auf deinem Sync-Server und wird nie wieder ans Handy geschickt.</p>
       <div class="field-label">Modell</div>
       <input class="input" id="ai-model" value="${esc(c.model)}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <p class="hint-small">Ein schnelles Modell reicht, z. B. deepseek-v4-flash oder glm-5.3-flash.</p>
