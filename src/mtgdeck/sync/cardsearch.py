@@ -126,6 +126,9 @@ def ask_model(cfg: dict[str, Any], messages: list[dict[str, str]]) -> str:
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):
             raise SearchError("Der OpenCode-Schlüssel wird nicht angenommen – in den Einstellungen prüfen.", 502) from None
+        if exc.code == 402:
+            raise SearchError("OpenCode meldet: kein Guthaben. Dieser Schlüssel nutzt dein Pay-as-you-go-Guthaben, "
+                              "nicht das Go-Abo – Guthaben aufladen oder einen Go-Schlüssel nehmen.", 402) from None
         if exc.code == 429:
             raise SearchError("Das Nutzungslimit deines OpenCode-Abos ist gerade erreicht – später noch einmal.", 429) from None
         if exc.code == 404:

@@ -360,3 +360,19 @@ def test_card_search_calls_an_openai_compatible_endpoint(monkeypatch):
     assert text == '{"query": "otag:ramp"}' and sent["url"] == "https://example.test/v1/chat/completions"
     assert sent["headers"]["Authorization"] == "Bearer sk-x" and sent["headers"]["User-agent"] == cardsearch.USER_AGENT
     assert sent["body"]["model"] == cardsearch.DEFAULT_MODEL and "X-opencode-session" in sent["headers"]
+
+
+def test_card_search_explains_missing_credit(monkeypatch):
+    import io
+    import urllib.error
+
+    import pytest
+    from mtgdeck.sync import cardsearch
+
+    def no_funds(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 402, "Payment Required", {}, io.BytesIO(b'{"error": "Insufficient account funds"}'))
+
+    monkeypatch.setattr(cardsearch.urllib.request, "urlopen", no_funds)
+    with pytest.raises(cardsearch.SearchError) as exc:
+        cardsearch.ask_model(cardsearch.config({"key": "oc_sk_x"}), [{"role": "user", "content": "ramp"}])
+    assert exc.value.status == 402 and "Guthaben" in str(exc.value)
