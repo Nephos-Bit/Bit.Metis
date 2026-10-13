@@ -1312,11 +1312,8 @@ for (const box of ["#describe-colors", "#describe-types"]) {
   $(box).addEventListener("click", (e) => {
     const b = e.target.closest(".chip");
     if (!b) return;
-    const on = b.getAttribute("aria-pressed") !== "true";
-    b.setAttribute("aria-pressed", String(on));
-    if (box === "#describe-colors") {  // "Farblos" and colours exclude each other
-      for (const o of $(box).querySelectorAll(".chip")) if (o !== b && on && (b.dataset.v === "C") !== (o.dataset.v === "C")) o.setAttribute("aria-pressed", "false");
-    }
+    // "Farblos" next to colours adds colourless cards (Sol Ring); alone it means only colourless ones
+    b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true"));
   });
 }
 

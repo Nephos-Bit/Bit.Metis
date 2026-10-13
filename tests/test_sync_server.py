@@ -326,10 +326,10 @@ def test_gui_card_search_by_description_goes_through_the_sync_server(net, monkey
         r = g.post("/api/cards/describe", json={"text": "bringt Länder ins Spiel", "colors": ["G"]})
         body = r.json()
         assert r.status_code == 200, body
-        assert body["used"] == "otag:ramp id<=g f:commander" and body["total"] == 3 and not body["cached"]  # precise one: no hits
+        assert body["used"] == "otag:ramp id<=g -id:c f:commander" and body["total"] == 3 and not body["cached"]  # precise one: no hits
         assert {"name", "image", "type_line"} <= set(body["cards"][0]) and "oracle_text" not in body["cards"][0]
         again = g.post("/api/cards/describe", json={"text": "Ins Spiel bringt Länder", "colors": ["B", "G"]}).json()
-        assert again["cached"] and again["used"] == "otag:ramp id<=bg f:commander" and len(asked) == 1
+        assert again["cached"] and again["used"] == "otag:ramp id<=bg -id:c f:commander" and len(asked) == 1
 
         assert g.get("/api/cards/query", params={"q": "otag:ramp", "page": 1}).json()["total"] == 3
         assert g.get("/api/cards/query", params={"q": "  "}).status_code == 400

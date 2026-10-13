@@ -270,7 +270,7 @@ print(app_snapshot(app.state.store)['decks'], TestClient(app).get('/app/sw.js').
 def test_card_search_composes_fixed_filters_and_cleans_the_model_query():
     from mtgdeck.sync import cardsearch
 
-    assert cardsearch.compose('o:"draw a card"', ["B", "G"], ["creature"]) == 'o:"draw a card" id<=bg t:creature f:commander'
+    assert cardsearch.compose('o:"draw a card"', ["B", "G"], ["creature"]) == 'o:"draw a card" id<=bg -id:c t:creature f:commander'
     assert cardsearch.compose("otag:ramp OR otag:mana-rock", ["C"], ["artifact", "land"]) == \
         "(otag:ramp OR otag:mana-rock) id:c (t:artifact OR t:land) f:commander"
     assert cardsearch.compose("otag:removal", ["C", "R"], ["nonsense"]) == "otag:removal id<=r f:commander"
@@ -289,8 +289,8 @@ def test_card_search_asks_the_model_and_maps_errors():
 
     cfg = cardsearch.config({"key": "sk-secret-1234"})
     got = cardsearch.describe("zieht eine Karte wenn meine Kreatur stirbt", ["B"], [], cfg, ask=fake)
-    assert got["query"] == 'o:"whenever a creature you control dies" o:"draw" id<=b f:commander'
-    assert got["broader"] == "otag:death-trigger otag:draw id<=b f:commander" and got["explain"].startswith("Kartenzug")
+    assert got["query"] == 'o:"whenever a creature you control dies" o:"draw" id<=b -id:c f:commander'
+    assert got["broader"] == "otag:death-trigger otag:draw id<=b -id:c f:commander" and got["explain"].startswith("Kartenzug")
     assert seen["text"] == "zieht eine Karte wenn meine Kreatur stirbt" and seen["cfg"]["model"] == cardsearch.DEFAULT_MODEL
     with pytest.raises(cardsearch.SearchError) as exc:
         cardsearch.describe("zieht Karten", [], [], cardsearch.config({}), ask=fake)
@@ -338,11 +338,11 @@ def test_card_search_routes_keep_the_key_on_the_server(tmp_path, monkeypatch):
     monkeypatch.setattr(cardsearch.translate, "__defaults__", (cardsearch.ask_model,))
     r = client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken", "colors": ["R"], "types": ["creature"]})
     assert r.status_code == 200, r.text
-    assert r.json() == {"query": "o:treasure id<=r t:creature f:commander", "broader": "", "explain": "Schätze", "cached": False}
+    assert r.json() == {"query": "o:treasure id<=r -id:c t:creature f:commander", "broader": "", "explain": "Schätze", "cached": False}
     assert calls[0]["key"] == "sk-abcdefgh9876" and calls[0]["model"] == "claude-sonnet-5-5"
     # the same description again (other colours, spacing, case): from the cache, no new request
     r = client.post("/api/app/cards/describe", headers=auth, json={"text": "  Macht   Schatzmarken. ", "colors": ["G"]})
-    assert r.json() == {"query": "o:treasure id<=g f:commander", "broader": "", "explain": "Schätze", "cached": True} and len(calls) == 1
+    assert r.json() == {"query": "o:treasure id<=g -id:c f:commander", "broader": "", "explain": "Schätze", "cached": True} and len(calls) == 1
     client.put("/api/app/ai", headers=auth, json={"model": "claude-haiku-5-5"})  # another model asks anew
     assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).json()["cached"] is False and len(calls) == 2
 
