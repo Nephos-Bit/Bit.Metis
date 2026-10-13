@@ -112,10 +112,10 @@ export async function searchCards(q) {
 }
 
 // any Scryfall query (the AI card search): one page of up to 175 cards, most played in Commander first
-export async function searchQuery(q, page = 1) {
+export async function searchQuery(q, page = 1, { multilingual = false } = {}) {  // multilingual: German names match too
   let data;
   try {
-    data = await api(`/cards/search?q=${encodeURIComponent(q)}&unique=cards&order=edhrec&page=${page}`);
+    data = await api(`/cards/search?q=${encodeURIComponent(q)}&unique=cards&order=edhrec&page=${page}${multilingual ? "&include_multilingual=true" : ""}`);
   } catch (e) {
     throw new Error(/ 400$/.test(e.message) ? "Scryfall versteht diese Suche nicht – bitte anpassen." : "Scryfall ist gerade nicht erreichbar.");
   }

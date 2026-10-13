@@ -365,40 +365,81 @@ function bindPlayerField(el, f) {
   $("#player-in", el)?.addEventListener("input", (e) => { f.player = e.target.value; });
 }
 
+const commanderSearch = (partner) => `<label class="search"><span class="sr">${partner ? "Partner suchen" : "Commander suchen"}</span>${icon("search")}
+    <input class="input" id="cmd-q" type="search" placeholder="${partner ? "Partner oder Hintergrund" : "Commander – deutsch oder englisch"}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"></label>
+  <div id="cmd-hits"><p class="hint-small">Ein paar Buchstaben reichen, z. B. „${partner ? "tymna" : "atra"}“.</p></div>`;
+
 /** A sheet page that searches a commander (``partner``: also Backgrounds); ``onPick(c)`` then goes back. */
 function commanderPage({ title, backLabel, partner = false, onPick }) {
-  let query = "";
   return ({ pop }) => ({
     title,
     left: `<button class="back-btn" type="button" data-sheet-back>${icon("chev-l")}<span>${esc(backLabel)}</span></button>`,
-    body: `<label class="search"><span class="sr">${partner ? "Partner suchen" : "Commander suchen"}</span>${icon("search")}
-        <input class="input" id="cmd-q" type="search" placeholder="${partner ? "Partner oder Hintergrund" : "Commander – deutsch oder englisch"}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"></label>
-      <div id="cmd-hits"><p class="hint-small">Ein paar Buchstaben reichen, z. B. „${partner ? "tymna" : "atra"}“.</p></div>`,
-    bind(el) {
-      const input = $("#cmd-q", el);
-      const hitsEl = $("#cmd-hits", el);
-      let seq = 0;
-      const pick = (c) => { onPick(c); document.activeElement?.blur(); pop(); };
-      const search = debounce(async (q) => {
-        const mine = ++seq;
-        try {
-          const hits = await scry.searchCommanders(q, { partner });
-          if (mine !== seq) return;
-          hitsEl.innerHTML = hits.length ? `<div class="group result-list">${hits.map((c) => `<button class="row" type="button" data-cmd="${esc(c.name)}">
-            <span class="thumb round">${art(c.name, "art", "thumb round")}</span><span class="main"><span class="title">${esc(c.name)}</span>
-            <span class="subtitle">${pips(c.colors)} ${esc(c.type)}</span></span></button>`).join("")}</div>` : `<p class="hint-small">Nichts gefunden.</p>`;
-        } catch {
-          if (mine !== seq) return;
-          hitsEl.innerHTML = `<div class="group"><button class="row" type="button" data-cmd="${esc(q)}"><span class="res draw">${icon("plus", "sm")}</span>
-            <span class="main"><span class="title">„${esc(q)}“ übernehmen</span><span class="subtitle">Ohne Netz – wird später nachgeschlagen</span></span></button></div>`;
-        }
-        scry.hydrate(hitsEl);
-        for (const b of $$("[data-cmd]", hitsEl)) b.addEventListener("click", () => pick(cmdOf(b.dataset.cmd)));
-      }, 280);
-      input.addEventListener("input", () => { query = input.value; if (query.trim().length >= 2) search(query.trim()); });
-      setTimeout(() => input.focus(), 60);
-    },
+    body: commanderSearch(partner),
+    bind(el) { bindCommanderSearch(el, { partner, onPick: (c) => { onPick(c); pop(); } }); },
   });
+}
+
+function bindCommanderSearch(el, { partner = false, onPick }) {
+  let query = "";
+  const input = $("#cmd-q", el);
+  const hitsEl = $("#cmd-hits", el);
+  let seq = 0;
+  const pick = (c) => { document.activeElement?.blur(); onPick(c); };
+  const search = debounce(async (q) => {
+    const mine = ++seq;
+    try {
+      const hits = await scry.searchCommanders(q, { partner });
+      if (mine !== seq) return;
+      hitsEl.innerHTML = hits.length ? `<div class="group result-list">${hits.map((c) => `<button class="row" type="button" data-cmd="${esc(c.name)}">
+        <span class="thumb round">${art(c.name, "art", "thumb round")}</span><span class="main"><span class="title">${esc(c.name)}</span>
+        <span class="subtitle">${pips(c.colors)} ${esc(c.type)}</span></span></button>`).join("")}</div>` : `<p class="hint-small">Nichts gefunden.</p>`;
+    } catch {
+      if (mine !== seq) return;
+      hitsEl.innerHTML = `<div class="group"><button class="row" type="button" data-cmd="${esc(q)}"><span class="res draw">${icon("plus", "sm")}</span>
+        <span class="main"><span class="title">„${esc(q)}“ übernehmen</span><span class="subtitle">Ohne Netz – wird später nachgeschlagen</span></span></button></div>`;
+    }
+    scry.hydrate(hitsEl);
+    for (const b of $$("[data-cmd]", hitsEl)) b.addEventListener("click", () => pick(cmdOf(b.dataset.cmd)));
+  }, 280);
+  input.addEventListener("input", () => { query = input.value; if (query.trim().length >= 2) search(query.trim()); });
+  setTimeout(() => input.focus(), 60);
+}
+
+// ======================================================================================
+// Neues Deck: commander (+ partner), name, bracket – then the builder opens (js/build.js)
+// ======================================================================================
+export function newDeckSheet() {
+  const f = { commander: null, partner: null, name: "", bracket: 3 };
+  const page = () => {
+    const auto = f.commander ? [f.commander.name, ...(f.partner ? [f.partner.name] : [])].map(shortName).join(" & ") : "";
+    return {
+      title: "Neues Deck",
+      body: f.commander ? `
+        <div class="field-label">Commander</div>
+        ${commanderRows(f)}
+        <div class="field-label">Name <span class="hint">optional</span></div>
+        <input class="input" id="deck-name" value="${esc(f.name)}" placeholder="${esc(auto)}" maxlength="80" autocomplete="off" enterkeyhint="done">
+        <div class="field-label">Ziel-Bracket</div>
+        <div class="segmented" role="radiogroup" aria-label="Ziel-Bracket" id="deck-bracket">${[1, 2, 3, 4, 5].map((v) =>
+          `<button type="button" role="radio" data-b="${v}" aria-pressed="${f.bracket === v}" aria-checked="${f.bracket === v}">${v}</button>`).join("")}</div>
+        <p class="hint-small">Danach suchst du die Karten aus. Legalität, Bracket und Preis prüft dein PC beim nächsten Abgleich.</p>`
+        : `<p class="hint-small lead-hint">Wer führt dein neues Deck an?</p>${commanderSearch(false)}`,
+      foot: f.commander ? `<button class="btn primary big" type="button" id="deck-go">${icon("plus", "sm")}Deck anlegen</button>` : "",
+      bind(el) {
+        scry.hydrate(el); paint(el);
+        if (!f.commander) { bindCommanderSearch(el, { onPick: (c) => { f.commander = c; redraw(); } }); return; }
+        bindCommanderRows(el, f, { backLabel: "Neues Deck", onMain: () => { f.commander = null; f.partner = null; redraw(); } });
+        $("#deck-name", el).addEventListener("input", (e) => { f.name = e.target.value; });
+        for (const b of $$("[data-b]", el)) b.addEventListener("click", () => { f.bracket = Number(b.dataset.b); redraw(); });
+        $("#deck-go", el).addEventListener("click", () => {
+          const commanders = [f.commander.name, ...(f.partner ? [f.partner.name] : [])];
+          closeSheet();
+          import("./build.js").then((m) => m.createDeck({ name: f.name.trim() || auto, commanders, colors: joinColors(f.commander.colors, f.partner?.colors), bracket: f.bracket }));
+        });
+      },
+    };
+  };
+  openSheet(page, { full: true });
 }
 
 // ======================================================================================
@@ -484,7 +525,8 @@ export function switchDeckSheet() {
   }), { onClose: () => window.dispatchEvent(new Event("hashchange")) });
 }
 
-export function cardSheet(name) {
+/** ``action`` = {label, run}: a button at the bottom (the builder's „Ins Deck“). */
+export function cardSheet(name, action = null) {
   rememberCard(name);
   let lang = "de";
   let de;  // undefined = loading, null = no German printing
@@ -502,8 +544,10 @@ export function cardSheet(name) {
           ${showDe ? `<p class="note">Gedruckter deutscher Text – der aktuelle Regeltext steht unter „Original“.</p>` : ""}
           ${de === undefined && c ? `<p class="note">Suche deutschen Text …</p>` : ""}
         </div>`,
+      foot: action?.label ? `<button class="btn primary big" type="button" id="card-action">${icon("plus", "sm")}${esc(action.label)}</button>` : "",
       bind(el) {
         for (const b of $$("[data-lang]", el)) b.addEventListener("click", () => { lang = b.dataset.lang; redraw(); });
+        $("#card-action", el)?.addEventListener("click", action?.run);
       },
     };
   };

@@ -1,8 +1,9 @@
 // The four tabs and their detail screens. Each screen returns {html, fab, bar, bind}; main.js draws it.
 
 import { currentDeck, deckBy, failedOps, gamesOf, isDemo, isPending, op, oppBy, oppName, oppSub, pendingCount, serverCall, setPref, shortName, state } from "./data.js";
+import { draftCount, tabletSized } from "./build.js";
 import { roundCard, running, startSheet } from "./round.js";
-import { cardSheet, editOpponentSheet, gameDetailSheet, gameSheet, opponentSheet, settingsSheet, switchDeckSheet } from "./forms.js";
+import { cardSheet, editOpponentSheet, gameDetailSheet, gameSheet, newDeckSheet, opponentSheet, settingsSheet, switchDeckSheet } from "./forms.js";
 import * as scry from "./scry.js";
 import { present, toast } from "./ui.js";
 import { $, $$, RESULT_TEXT, ago, artFallback, debounce, esc, icon, mana, pips, plural, recordText, reducedMotion, uid } from "./util.js";
@@ -147,13 +148,13 @@ export function decks() {
         ${thumb(d.commanders[0], d.colors)}
         <span class="main"><span class="title">${esc(d.name)}</span>
           <span class="subtitle">${pips(d.colors)} ${esc(d.level)} · ${esc(recordText(d.record))}</span></span>${icon("chev-r", "sm chev")}</a>`).join("")}</div>`
-      : empty("decks", "Noch keine Decks", "Baue oder importiere Decks am PC – nach dem Abgleich erscheinen sie hier.")}`;
-  return { html, bar: { title: "Decks", watch: ".large-title h1" } };
+      : empty("decks", "Noch keine Decks", tabletSized() ? "Leg hier ein neues an – oder baue und importiere Decks am PC, nach dem Abgleich erscheinen sie hier." : "Baue Decks am PC oder auf dem iPad – nach dem Abgleich erscheinen sie hier.")}`;
+  return { html, fab: tabletSized() ? { label: "Neues Deck", run: newDeckSheet } : null, bar: { title: "Decks", watch: ".large-title h1" } };
 }
 
 const SEGMENTS = [["rule0", "Rule 0"], ["karten", "Karten"], ["partien", "Partien"]];
-const CATS = ["Ramp", "Draw", "Removal", "Board Wipe", "Counterspell", "Tutor", "Protection", "Synergy", "Win Condition", "Utility", "Land"];
-const CAT_LABELS = { Ramp: "Ramp", Draw: "Kartenzug", Removal: "Removal", "Board Wipe": "Board Wipes", Counterspell: "Counterspells",
+export const CATS = ["Ramp", "Draw", "Removal", "Board Wipe", "Counterspell", "Tutor", "Protection", "Synergy", "Win Condition", "Utility", "Land"];
+export const CAT_LABELS = { Ramp: "Ramp", Draw: "Kartenzug", Removal: "Removal", "Board Wipe": "Board Wipes", Counterspell: "Counterspells",
   Tutor: "Tutoren", Protection: "Schutz", Synergy: "Synergie", "Win Condition": "Siegbedingung", Utility: "Sonstiges", Land: "Länder", "": "Sonstiges" };
 
 export function deck(slug, seg = "rule0") {
@@ -161,19 +162,23 @@ export function deck(slug, seg = "rule0") {
   if (!d) return { html: empty("decks", "Deck nicht gefunden", "Vielleicht wurde es am PC gelöscht."), bar: { title: "Deck", back: { href: "#/decks", label: "Decks" }, always: true } };
   seg = SEGMENTS.some(([k]) => k === seg) ? seg : "rule0";
   const r = d.record;
+  const drafts = draftCount(d);
   const html = `
     <div class="detail-hero" data-bg="${esc(d.colors)}">${art(d.commanders[0])}
       <a class="float-back icon-btn glass" href="#/decks" aria-label="Zurück zu Decks">${icon("chev-l")}</a></div>
     <div class="detail-head"><h1>${esc(d.name)}</h1>
-      <div class="meta">${pips(d.colors)} <span>${esc(d.level)}</span>${d.proxy ? ` · <span>Proxy-Deck</span>` : ""}${d.legal === false ? ` · <span class="flag">nicht legal</span>` : ""}</div>
+      <div class="meta">${pips(d.colors)} <span>${esc(d.level)}</span>${d.proxy ? ` · <span>Proxy-Deck</span>` : ""}${d.checking ? ` · <span>wird am PC geprüft</span>` : d.legal === false ? ` · <span class="flag">nicht legal</span>` : ""}</div>
       ${d.description ? `<p class="sub muted">${esc(d.description)}</p>` : ""}
       <div class="recordbar"><div class="w"><b>${r.wins}</b><span>Siege</span></div><div class="l"><b>${r.losses}</b><span>Niederlagen</span></div>
         <div><b>${r.games ? Math.round((100 * r.wins) / r.games) : 0} %</b><span>${plural(r.games, "Partie", "Partien")}</span></div></div>
+      ${!tabletSized() ? "" : drafts ? `<a class="draft-note" href="#/bauen/${esc(d.slug)}">${icon("edit", "sm")}<span class="main"><b>${plural(drafts, "ungespeicherte Änderung", "ungespeicherte Änderungen")}</b>
+          <small>Weiterbauen und speichern</small></span>${icon("chev-r", "sm chev")}</a>`
+        : `<a class="btn tint build-open" href="#/bauen/${esc(d.slug)}">${icon("edit", "sm")}Deck bauen</a>`}
     </div>
     <div class="seg-sticky"><div class="segmented" role="tablist">${SEGMENTS.map(([k, label]) => `<button type="button" role="tab" data-seg="${k}" aria-pressed="${k === seg}" aria-selected="${k === seg}">${label}</button>`).join("")}</div></div>
     <div id="seg-body">${segment(d, seg)}</div>`;
   return {
-    html, bar: { title: d.name, back: { href: "#/decks", label: "Decks" }, watch: ".detail-head h1" },
+    html, bar: { title: d.name, back: { href: "#/decks", label: "Decks" }, watch: ".detail-head h1", action: tabletSized() ? { label: "Bauen", run: () => { location.hash = `#/bauen/${d.slug}`; } } : null },
     bind(el) {
       for (const b of $$("[data-seg]", el)) b.addEventListener("click", () => {
         history.replaceState(history.state, "", `#/decks/${slug}/${b.dataset.seg}`);
