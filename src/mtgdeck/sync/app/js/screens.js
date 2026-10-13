@@ -386,8 +386,8 @@ function bindDescribe(el) {
   text.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
   for (const b of $$("[data-color]", el)) b.addEventListener("click", () => {
     const c = b.dataset.color;
-    // "Farblos" and the colours exclude each other
-    desc.colors = desc.colors.includes(c) ? desc.colors.filter((x) => x !== c) : c === "C" ? ["C"] : [...desc.colors.filter((x) => x !== "C"), c];
+    // "Farblos" next to colours adds colourless cards (Sol Ring); alone it means only colourless ones
+    desc.colors = desc.colors.includes(c) ? desc.colors.filter((x) => x !== c) : [...desc.colors, c];
     for (const x of $$("[data-color]", el)) x.setAttribute("aria-pressed", desc.colors.includes(x.dataset.color));
   });
   for (const b of $$("[data-type]", el)) b.addEventListener("click", () => {

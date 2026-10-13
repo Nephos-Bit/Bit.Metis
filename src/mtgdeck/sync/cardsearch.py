@@ -98,13 +98,15 @@ def clean_query(text: Any) -> str:
 
 
 def compose(query: str, colors: list[str] | str | None = None, types: list[str] | None = None) -> str:
-    """The model's query plus the fixed filters: colour identity (fits into a deck of these colours), types, Commander."""
+    """The model's query plus the fixed filters: colour identity (within these colours, at least one of them unless
+    "C" is picked as well), types, Commander."""
     parts = [f"({query})" if " or " in query.lower() else query] if query else []
     picked = [c for c in COLORS if c in "".join(colors or []).upper()]
-    if colors and "C" in "".join(colors).upper() and not picked:
+    colorless = "C" in "".join(colors or []).upper()
+    if picked:  # cards of these colours; colourless ones (Sol Ring) only when "Farblos" is picked too
+        parts.append(f"id<={''.join(picked).lower()}" + ("" if colorless else " -id:c"))
+    elif colorless:
         parts.append("id:c")
-    elif picked:
-        parts.append(f"id<={''.join(picked).lower()}")
     kinds = [t for t in (types or []) if t in TYPES]
     if len(kinds) == 1:
         parts.append(f"t:{kinds[0]}")
