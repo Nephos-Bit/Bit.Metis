@@ -256,6 +256,7 @@ class Block:
             raise ImportError('blocked ' + name)
 sys.meta_path.insert(0, Block())
 from mtgdeck.sync.server import create_app, app_snapshot, run_op
+from mtgdeck.sync import cardsearch
 import pytest
 from fastapi.testclient import TestClient
 app = create_app({str(tmp_path)!r})
@@ -264,3 +265,98 @@ print(app_snapshot(app.state.store)['decks'], TestClient(app).get('/app/sw.js').
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "[] 200"
+
+
+def test_card_search_composes_fixed_filters_and_cleans_the_model_query():
+    from mtgdeck.sync import cardsearch
+
+    assert cardsearch.compose('o:"draw a card"', ["B", "G"], ["creature"]) == 'o:"draw a card" id<=bg t:creature f:commander'
+    assert cardsearch.compose("otag:ramp OR otag:mana-rock", ["C"], ["artifact", "land"]) == \
+        "(otag:ramp OR otag:mana-rock) id:c (t:artifact OR t:land) f:commander"
+    assert cardsearch.compose("otag:removal", ["C", "R"], ["nonsense"]) == "otag:removal id<=r f:commander"
+    assert cardsearch.clean_query('  o:"dies"\n f:modern  legal:commander kw:flying ') == 'o:"dies" kw:flying'
+
+
+def test_card_search_asks_the_model_and_maps_errors():
+    import pytest
+    from mtgdeck.sync import cardsearch
+
+    seen = {}
+
+    def fake(cfg, messages):
+        seen["cfg"], seen["messages"] = cfg, messages
+        return '<think>hm</think>Here: {"query": "o:\\"whenever a creature you control dies\\" o:\\"draw\\"", "broader": "otag:death-trigger otag:draw", "explain": "Kartenzug, wenn eigene Kreaturen sterben"}'
+
+    cfg = cardsearch.config({"key": "sk-secret-1234"})
+    got = cardsearch.describe("zieht eine Karte wenn meine Kreatur stirbt", ["B"], [], cfg, ask=fake)
+    assert got["query"] == 'o:"whenever a creature you control dies" o:"draw" id<=b f:commander'
+    assert got["broader"] == "otag:death-trigger otag:draw id<=b f:commander" and got["explain"].startswith("Kartenzug")
+    assert seen["messages"][1]["content"] == "zieht eine Karte wenn meine Kreatur stirbt" and seen["cfg"]["model"] == cardsearch.DEFAULT_MODEL
+    with pytest.raises(cardsearch.SearchError) as exc:
+        cardsearch.describe("zieht Karten", [], [], cardsearch.config({}), ask=fake)
+    assert exc.value.status == 409
+    with pytest.raises(cardsearch.SearchError):
+        cardsearch.describe("zieht Karten", [], [], cfg, ask=lambda c, m: "Sorry, no idea.")
+    assert cardsearch.public(cfg) == {"configured": True, "model": cardsearch.DEFAULT_MODEL, "url": cardsearch.DEFAULT_URL,
+                                      "from_env": False, "key_hint": "…1234"}  # fmt: skip
+
+
+def test_card_search_routes_keep_the_key_on_the_server(tmp_path, monkeypatch):
+    from mtgdeck.sync import cardsearch
+
+    for var in ("MTG_AI_KEY", "MTG_AI_MODEL", "MTG_AI_URL"):
+        monkeypatch.delenv(var, raising=False)
+    app = create_app(tmp_path)
+    client = TestClient(app)
+    token = app.state.devices.claim(app.state.devices.new_code()["code"], "Handy", "phone")["token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/app/ai").status_code == 401
+    assert client.get("/api/app/ai", headers=auth).json()["configured"] is False
+    r = client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"})
+    assert r.status_code == 409 and "eingerichtet" in r.json()["detail"]
+
+    assert client.put("/api/app/ai", headers=auth, json={"url": "http://plain.example"}).status_code == 400
+    r = client.put("/api/app/ai", headers=auth, json={"key": " sk-abcdefgh9876 ", "model": "glm-5.3-flash"})
+    assert r.json() == {"configured": True, "model": "glm-5.3-flash", "url": cardsearch.DEFAULT_URL, "from_env": False, "key_hint": "…9876"}
+    assert "sk-abcdefgh9876" not in client.get("/api/app/ai", headers=auth).text
+
+    calls = []
+    monkeypatch.setattr(cardsearch, "ask_model", lambda cfg, messages: calls.append(cfg) or '{"query": "o:treasure", "explain": "Schätze"}')
+    monkeypatch.setattr(cardsearch.describe, "__defaults__", (cardsearch.ask_model,))
+    r = client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken", "colors": ["R"], "types": ["creature"]})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"query": "o:treasure id<=r t:creature f:commander", "broader": "", "explain": "Schätze"}
+    assert calls[0]["key"] == "sk-abcdefgh9876" and calls[0]["model"] == "glm-5.3-flash"
+
+    for _ in range(cardsearch.PER_MINUTE):
+        client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"})
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).status_code == 429
+
+    assert client.put("/api/app/ai", headers=auth, json={"key": ""}).json()["configured"] is False
+    monkeypatch.setenv("MTG_AI_KEY", "sk-from-env-0000")
+    assert client.get("/api/app/ai", headers=auth).json()["from_env"] is True
+
+
+def test_card_search_calls_an_openai_compatible_endpoint(monkeypatch):
+    import io
+    import json
+    from mtgdeck.sync import cardsearch
+
+    sent = {}
+
+    class Answer(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout):
+        sent["url"], sent["headers"], sent["body"] = req.full_url, dict(req.header_items()), json.loads(req.data)
+        return Answer(json.dumps({"choices": [{"message": {"content": '{"query": "otag:ramp"}'}}]}).encode())
+
+    monkeypatch.setattr(cardsearch.urllib.request, "urlopen", fake_urlopen)
+    text = cardsearch.ask_model(cardsearch.config({"key": "sk-x", "url": "https://example.test/v1/"}), [{"role": "user", "content": "ramp"}])
+    assert text == '{"query": "otag:ramp"}' and sent["url"] == "https://example.test/v1/chat/completions"
+    assert sent["headers"]["Authorization"] == "Bearer sk-x" and sent["headers"]["User-agent"] == cardsearch.USER_AGENT
+    assert sent["body"]["model"] == cardsearch.DEFAULT_MODEL and "X-opencode-session" in sent["headers"]

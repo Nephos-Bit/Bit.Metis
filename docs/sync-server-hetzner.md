@@ -123,6 +123,21 @@ cd /opt/mtgdeck-sync && docker compose exec sync mtg-sync-server pair
 - **Sicherung einspielen** auf einem verbundenen PC: Die Daten der Sicherung werden mit denen der anderen Geräte
   zusammengeführt. Gelöscht wird dabei auf anderen Geräten nichts.
 
+## Kartensuche mit KI (Handy)
+
+Im Karten-Tab der Handy-App kannst du unter **Beschreiben** in eigenen Worten sagen, was eine Karte tun soll (dazu
+optional Farbidentität und Kartentyp). Der Server lässt ein Sprachmodell daraus eine Scryfall-Suche machen; das Handy
+fragt dann Scryfall und zeigt die Karten. Farben, Typ und „in Commander erlaubt“ setzt die App selbst dazu.
+
+- **Einrichten:** Handy → Einstellungen → *Suche mit KI* → OpenCode-API-Schlüssel einfügen → *Speichern*. Der Schlüssel
+  liegt danach nur auf dem Server (`sync.sqlite`) und wird nie wieder ans Handy geschickt.
+- **Abo:** Standard ist OpenCode Go (`https://opencode.ai/inference/go/v1`, Modell `deepseek-v4-flash`). Mit
+  OpenCode-Zen-Guthaben stattdessen `https://opencode.ai/zen/v1` als Adresse eintragen. Jede andere Adresse mit
+  OpenAI-kompatiblem `/chat/completions` geht auch.
+- **Alternativ per Server-Einstellung** (gewinnt vor dem Handy): `MTG_AI_KEY`, `MTG_AI_MODEL`, `MTG_AI_URL` in der
+  `compose.yml` unter `sync: environment:` setzen, dann `docker compose up -d`.
+- Höchstens 12 Suchen pro Minute und Gerät.
+
 ## Updates
 
 - **Automatisch:** Jede Stunde prüft der Timer, ob es neue Images von Sync-Server oder Caddy gibt, und startet nur

@@ -13,7 +13,8 @@ Routes (JSON; document content as base64):
 - ``GET /api/sync/changes?since=`` / ``PUT /api/sync/doc`` – the protocol of ``SyncStore`` (409 + current document);
 - ``GET /api/devices``, ``DELETE /api/devices/{id}``, ``POST /api/presence``;
 - the phone app ("Am Tisch", ``/app/``): ``GET /api/app/data`` (read model, ETag), ``GET /api/app/status`` (PCs online),
-  ``POST /api/app/ops`` (operations, idempotent by id – see ``appops``); ``/`` and ``/koppeln#CODE`` lead to the app.
+  ``POST /api/app/ops`` (operations, idempotent by id – see ``appops``); ``/`` and ``/koppeln#CODE`` lead to the app;
+- card search by description (``cardsearch``): ``GET|PUT /api/app/ai`` (settings, never the key), ``POST /api/app/cards/describe``.
 
 Tokens are stored as sha256 only; every request with a token updates the device's ``last_seen``.
 """
@@ -93,6 +94,7 @@ class Devices:
                     code_hash TEXT PRIMARY KEY, created REAL NOT NULL, expires REAL NOT NULL, created_by TEXT, used REAL);
                 CREATE TABLE IF NOT EXISTS app_ops (
                     id TEXT PRIMARY KEY, at REAL NOT NULL, device TEXT, ok INTEGER NOT NULL, error TEXT);
+                CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 DROP TABLE IF EXISTS jobs;  -- the former questions for Claude from the phone
             """)
 
@@ -107,6 +109,19 @@ class Devices:
             db.execute("INSERT OR REPLACE INTO app_ops(id, at, device, ok, error) VALUES (?,?,?,?,?)",
                        (op_id, time.time(), device_id, int(ok), error))  # fmt: skip
             db.execute("DELETE FROM app_ops WHERE at < ?", (time.time() - 90 * 86400,))
+
+    def setting(self, key: str) -> Any:
+        """A server-side setting set from a device (e.g. the AI card search key); never synced to devices."""
+        with self._db() as db:
+            row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def set_setting(self, key: str, value: Any) -> None:
+        with self._lock, self._db() as db:
+            if value is None:
+                db.execute("DELETE FROM settings WHERE key = ?", (key,))
+            else:
+                db.execute("INSERT OR REPLACE INTO settings(key, value) VALUES (?,?)", (key, json.dumps(value)))
 
     def _db(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -271,6 +286,18 @@ class DocRequest(BaseModel):
 
 class OpsRequest(BaseModel):
     ops: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
+class DescribeRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+    colors: list[str] = Field(default_factory=list, max_length=6)
+    types: list[str] = Field(default_factory=list, max_length=8)
+
+
+class AiSettingsRequest(BaseModel):
+    key: str | None = Field(default=None, max_length=400)  # None = keep, "" = remove
+    model: str | None = Field(default=None, max_length=100)
+    url: str | None = Field(default=None, max_length=300)
 
 
 class PresenceRequest(BaseModel):
@@ -446,6 +473,54 @@ def create_app(data: Path | None = None, public_url: str | None = None) -> FastA
             results.append(await asyncio.to_thread(run_op, store, devices, op, me["id"]))
         _, etag = await asyncio.to_thread(snapshot_body)
         return {"results": results, "etag": etag}
+
+    # ---- card search by description (the one AI feature, asked for on purpose; see cardsearch) ----
+    asks: dict[str, deque[float]] = {}
+
+    def ai_config() -> dict[str, Any]:
+        from . import cardsearch
+
+        return cardsearch.config(devices.setting("ai"))
+
+    @app.get("/api/app/ai")
+    async def ai_get(me: dict[str, Any] = Depends(device)) -> dict[str, Any]:
+        from . import cardsearch
+
+        return cardsearch.public(await asyncio.to_thread(ai_config))
+
+    @app.put("/api/app/ai")
+    async def ai_put(req: AiSettingsRequest, me: dict[str, Any] = Depends(device)) -> dict[str, Any]:
+        from . import cardsearch
+
+        stored = dict(await asyncio.to_thread(devices.setting, "ai") or {})
+        for field in ("key", "model", "url"):
+            value = getattr(req, field)
+            if value is not None:
+                value = value.strip()
+                if field == "url" and value and not re.fullmatch(r"https://[^\s/]+(/[^\s]*)?", value):
+                    raise HTTPException(400, "Die Adresse muss mit https:// beginnen.")
+                if value:
+                    stored[field] = value
+                else:
+                    stored.pop(field, None)
+        await asyncio.to_thread(devices.set_setting, "ai", stored or None)
+        return cardsearch.public(await asyncio.to_thread(ai_config))
+
+    @app.post("/api/app/cards/describe")
+    async def cards_describe(req: DescribeRequest, me: dict[str, Any] = Depends(device)) -> dict[str, Any]:
+        from . import cardsearch
+
+        now = time.time()
+        recent = asks.setdefault(me["id"], deque())
+        while recent and now - recent[0] > 60:
+            recent.popleft()
+        if len(recent) >= cardsearch.PER_MINUTE:
+            raise HTTPException(429, "Kurz durchatmen – zu viele Suchen in einer Minute.")
+        recent.append(now)
+        try:
+            return await asyncio.to_thread(cardsearch.describe, req.text, req.colors, req.types, ai_config())
+        except cardsearch.SearchError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
 
     return app
 

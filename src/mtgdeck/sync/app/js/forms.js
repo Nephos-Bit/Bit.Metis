@@ -1,7 +1,7 @@
 // Sheets for input and quick looks: log a game (with the opponent picker as a second page), record an opponent
 // deck, switch tonight's deck, look at a card, a game, the settings.
 
-import { currentDeck, deckBy, disconnect, dropOp, endDemo, failedOps, gamesOf, isDemo, op, oppBy, oppName, pendingCount, resetDemo, setPref, shortName, state, undo, wake } from "./data.js";
+import { currentDeck, deckBy, disconnect, dropOp, endDemo, failedOps, gamesOf, isDemo, op, oppBy, oppName, pendingCount, resetDemo, serverCall, setPref, shortName, state, undo, wake } from "./data.js";
 import * as scry from "./scry.js";
 import { roundLogPage, roundSummary } from "./round.js";
 import { art, paint, rememberCard } from "./screens.js";
@@ -573,6 +573,9 @@ export function settingsSheet() {
         ${state.pcs.map((pc) => `<div class="row"><span class="status-dot ${pc.online ? "" : "off"}"></span><span class="main"><span class="title">PC „${esc(pc.name)}“</span>
           <span class="subtitle">${pc.online ? "online" : `zuletzt ${esc(ago(new Date(pc.last_seen * 1000).toISOString()))}`}</span></span></div>`).join("")}
       </div>
+      <div class="field-label">Kartensuche</div>
+      <div class="group settings"><button class="row" type="button" id="ai-open"><span class="row-icon">${icon("sparkle", "sm")}</span><span class="main"><span class="title">Suche mit KI</span>
+        <span class="subtitle wrap" id="ai-state">${esc(aiStateText())}</span></span>${icon("chev-r", "sm chev")}</button></div>
       ${failed.length ? `<div class="field-label">Nicht übernommen</div><div class="group settings">${failed.map((o) => `<div class="row"><span class="main">
           <span class="title">${esc(OP_LABEL[o.type]?.(o.payload) || o.type)}</span><span class="subtitle wrap">${esc(o.error || "")}</span></span>
           <button class="btn" type="button" data-drop="${esc(o.id)}">Verwerfen</button></div>`).join("")}</div>` : ""}
@@ -596,9 +599,72 @@ export function settingsSheet() {
         $("#sync-now", el)?.addEventListener("click", () => { wake(); toast("Wird aktualisiert …"); setTimeout(redraw, 1200); });
         for (const b of $$("[data-drop]", el)) b.addEventListener("click", () => { dropOp(b.dataset.drop); redraw(); });
         $("#sign-off", el)?.addEventListener("click", () => push(signOffPage));
+        $("#ai-open", el)?.addEventListener("click", () => push(aiPage));
+        if (!isDemo()) loadAi().then(() => { const s = $("#ai-state", el); if (s) s.textContent = aiStateText(); });
       },
     };
   }, { onClose: () => window.dispatchEvent(new Event("hashchange")) });
+}
+
+// ---- the AI card search: OpenCode key, model and address live on the sync server, never on the phone ----
+let aiCfg = null;  // what the server says: {configured, model, url, from_env, key_hint}
+export async function loadAi() {
+  try { aiCfg = await serverCall("/api/app/ai"); } catch { /* offline: keep the last answer */ }
+  return aiCfg;
+}
+const aiStateText = () => (isDemo() ? "Nur mit deinem Server verbunden" : !aiCfg ? "…" : aiCfg.configured ? `Eingerichtet · ${aiCfg.model}` : "Noch nicht eingerichtet");
+
+/** The setup page, inside the settings or as its own sheet (from the Karten tab). */
+export function aiSheet({ onSaved } = {}) {
+  openSheet((ctx) => aiPage({ ...ctx, onSaved }));
+}
+
+function aiPage({ pop, close, redraw: again, onSaved }) {
+  const c = aiCfg;
+  const back = pop && !onSaved ? `<button class="back-btn" type="button" data-sheet-back>${icon("chev-l")}<span>Zurück</span></button>` : "";
+  if (!c) {
+    return { title: "Suche mit KI", left: back, body: `<div class="empty">${icon("sparkle")}<p>Wird geladen …</p></div>`,
+      bind() { loadAi().then((got) => { if (got) again(); }); } };
+  }
+  return {
+    title: "Suche mit KI", left: back, right: onSaved ? `<button class="btn plain" type="button" data-sheet-close>Abbrechen</button>` : "",
+    body: `<p class="lead-small">Beschreib im Karten-Tab, was eine Karte tun soll – die KI macht daraus eine Scryfall-Suche.
+        Dafür nutzt der Server dein OpenCode-Abo.</p>
+      <div class="field-label">OpenCode-API-Schlüssel</div>
+      ${c.from_env ? `<div class="group settings"><div class="row"><span class="main"><span class="title">Vom Server vorgegeben</span>
+          <span class="subtitle wrap">steht in der Server-Einstellung MTG_AI_KEY</span></span></div></div>`
+        : `<input class="input" id="ai-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"
+          placeholder="${c.configured ? `gespeichert (${esc(c.key_hint)}) – neu eingeben zum Ändern` : "sk-…"}">`}
+      <p class="hint-small">Zu finden in der OpenCode-Konsole (opencode.ai) unter „API Keys“. Er bleibt auf deinem Sync-Server und wird nie wieder ans Handy geschickt.</p>
+      <div class="field-label">Modell</div>
+      <input class="input" id="ai-model" value="${esc(c.model)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="hint-small">Ein schnelles Modell reicht, z. B. deepseek-v4-flash oder glm-5.3-flash.</p>
+      <div class="field-label">Adresse</div>
+      <input class="input" id="ai-url" value="${esc(c.url)}" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <p class="hint-small">OpenCode Go: https://opencode.ai/inference/go/v1 · OpenCode Zen (Guthaben): https://opencode.ai/zen/v1</p>
+      ${c.configured && !c.from_env ? `<div class="btn-col"><button class="btn danger" type="button" id="ai-remove">Schlüssel entfernen</button></div>` : ""}`,
+    foot: `<button class="btn primary big" type="button" id="ai-save">Speichern</button>`,
+    bind(el) {
+      const send = async (body, done) => {
+        const btn = $("#ai-save", el);
+        btn.disabled = true;
+        try {
+          aiCfg = await serverCall("/api/app/ai", { method: "PUT", body });
+          toast(done, { ok: true });
+          if (onSaved) { close(); onSaved(aiCfg); } else if (pop) pop(); else close();
+        } catch (e) {
+          toast(e.message);
+          btn.disabled = false;
+        }
+      };
+      $("#ai-save", el).addEventListener("click", () => {
+        const body = { key: $("#ai-key", el)?.value.trim() || null };  // only what changed: an address set on the server stays
+        for (const f of ["model", "url"]) { const v = $(`#ai-${f}`, el).value.trim(); if (v !== c[f]) body[f] = v; }
+        send(body, "Gespeichert");
+      });
+      $("#ai-remove", el)?.addEventListener("click", () => send({ key: "" }, "Schlüssel entfernt"));
+    },
+  };
 }
 
 function signOffPage({ pop }) {

@@ -111,6 +111,18 @@ export async function searchCards(q) {
   return [...out.values()].slice(0, 15);
 }
 
+// any Scryfall query (the AI card search): one page of up to 175 cards, most played in Commander first
+export async function searchQuery(q, page = 1) {
+  let data;
+  try {
+    data = await api(`/cards/search?q=${encodeURIComponent(q)}&unique=cards&order=edhrec&page=${page}`);
+  } catch (e) {
+    throw new Error(/ 400$/.test(e.message) ? "Scryfall versteht diese Suche nicht – bitte anpassen." : "Scryfall ist gerade nicht erreichbar.");
+  }
+  const cards = ok(data).map((c) => { const i = remember(c); return { name: i.name, type: i.type, cost: i.cost }; });
+  return { cards, total: data?.total_cards || 0, next: data?.has_more ? page + 1 : null };
+}
+
 // German printed name/type/text of a card (null when there is no German printing)
 export async function german(name) {
   if (name in cacheDe) return cacheDe[name];
