@@ -297,7 +297,6 @@ class DescribeRequest(BaseModel):
 class AiSettingsRequest(BaseModel):
     key: str | None = Field(default=None, max_length=400)  # None = keep, "" = remove
     model: str | None = Field(default=None, max_length=100)
-    url: str | None = Field(default=None, max_length=300)
 
 
 class PresenceRequest(BaseModel):
@@ -493,12 +492,12 @@ def create_app(data: Path | None = None, public_url: str | None = None) -> FastA
         from . import cardsearch
 
         stored = dict(await asyncio.to_thread(devices.setting, "ai") or {})
-        for field in ("key", "model", "url"):
+        if req.model and req.model.strip() not in cardsearch.MODELS:
+            raise HTTPException(400, "Dieses Modell kennt die App nicht.")
+        for field in ("key", "model"):
             value = getattr(req, field)
             if value is not None:
                 value = value.strip()
-                if field == "url" and value and not re.fullmatch(r"https://[^\s/]+(/[^\s]*)?", value):
-                    raise HTTPException(400, "Die Adresse muss mit https:// beginnen.")
                 if value:
                     stored[field] = value
                 else:

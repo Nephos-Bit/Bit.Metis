@@ -408,7 +408,7 @@ function bindDescribe(el) {
     if (desc.error) {
       const setup = desc.error.status === 409;
       out.innerHTML = `<div class="empty">${icon(setup ? "sparkle" : "alert")}<h3>${setup ? "Noch nicht eingerichtet" : "Das hat nicht geklappt"}</h3>
-        <p>${esc(setup ? "Für die Suche mit KI braucht der Server einmal deinen OpenCode-Schlüssel." : desc.error.message)}</p>
+        <p>${esc(setup ? "Für die Suche mit KI braucht der Server einmal deinen Claude-API-Schlüssel." : desc.error.message)}</p>
         ${setup ? `<div class="btn-col"><button class="btn primary" type="button" id="ai-setup">Jetzt einrichten</button></div>` : ""}</div>`;
       $("#ai-setup", out)?.addEventListener("click", () => import("./forms.js").then((m) => m.aiSheet({ onSaved: () => { desc.error = null; render(); } })));
       return;

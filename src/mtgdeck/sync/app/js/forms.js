@@ -606,13 +606,13 @@ export function settingsSheet() {
   }, { onClose: () => window.dispatchEvent(new Event("hashchange")) });
 }
 
-// ---- the AI card search: OpenCode key, model and address live on the sync server, never on the phone ----
-let aiCfg = null;  // what the server says: {configured, model, url, from_env, key_hint}
+// ---- the AI card search: the Claude API key and model live on the sync server, never on the phone ----
+let aiCfg = null;  // what the server says: {configured, model, from_env, key_hint}
 export async function loadAi() {
   try { aiCfg = await serverCall("/api/app/ai"); } catch { /* offline: keep the last answer */ }
   return aiCfg;
 }
-const aiStateText = () => (isDemo() ? "Nur mit deinem Server verbunden" : !aiCfg ? "…" : aiCfg.configured ? `Eingerichtet · ${aiCfg.model}` : "Noch nicht eingerichtet");
+const aiStateText = () => (isDemo() ? "Nur mit deinem Server verbunden" : !aiCfg ? "…" : aiCfg.configured ? `Eingerichtet · ${(aiCfg.models || []).find((m) => m.id === aiCfg.model)?.label || aiCfg.model}` : "Noch nicht eingerichtet");
 
 /** The setup page, inside the settings or as its own sheet (from the Karten tab). */
 export function aiSheet({ onSaved } = {}) {
@@ -629,19 +629,18 @@ function aiPage({ pop, close, redraw: again, onSaved }) {
   return {
     title: "Suche mit KI", left: back, right: onSaved ? `<button class="btn plain" type="button" data-sheet-close>Abbrechen</button>` : "",
     body: `<p class="lead-small">Beschreib im Karten-Tab, was eine Karte tun soll – die KI macht daraus eine Scryfall-Suche.
-        Dafür nutzt der Server dein OpenCode-Abo.</p>
-      <div class="field-label">OpenCode-API-Schlüssel</div>
+        Dafür fragt der Server Claude.</p>
+      <div class="field-label">Claude-API-Schlüssel</div>
       ${c.from_env ? `<div class="group settings"><div class="row"><span class="main"><span class="title">Vom Server vorgegeben</span>
           <span class="subtitle wrap">steht in der Server-Einstellung MTG_AI_KEY</span></span></div></div>`
         : `<input class="input" id="ai-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false"
-          placeholder="${c.configured ? `gespeichert (${esc(c.key_hint)}) – neu eingeben zum Ändern` : "sk-…"}">`}
-      <p class="hint-small">In der OpenCode-Konsole (opencode.ai/console) unter „Keys“: Service Account anlegen → „Add API Key“ mit „Inference only“. Er bleibt auf deinem Sync-Server und wird nie wieder ans Handy geschickt.</p>
+          placeholder="${c.configured ? `gespeichert (${esc(c.key_hint)}) – neu eingeben zum Ändern` : "sk-ant-…"}">`}
+      <p class="hint-small">In der Claude Console (platform.claude.com) unter „API Keys“ → „Create Key“. Er bleibt auf deinem Sync-Server und wird nie wieder ans Handy geschickt.</p>
       <div class="field-label">Modell</div>
-      <input class="input" id="ai-model" value="${esc(c.model)}" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <p class="hint-small">Ein schnelles Modell reicht, z. B. deepseek-v4-flash oder glm-5.3-flash.</p>
-      <div class="field-label">Adresse</div>
-      <input class="input" id="ai-url" value="${esc(c.url)}" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <p class="hint-small">OpenCode Go: https://opencode.ai/inference/go/v1 · OpenCode Zen (Guthaben): https://opencode.ai/zen/v1</p>
+      <div class="group settings" id="ai-models" role="radiogroup" aria-label="Modell">${(c.models || []).map((m) => `<button class="row" type="button" role="radio" data-model="${esc(m.id)}" aria-pressed="${m.id === c.model}" aria-checked="${m.id === c.model}">
+          <span class="main"><span class="title">${esc(m.label)}</span><span class="subtitle wrap">${esc(m.note)} · ${esc(m.cost)}</span></span>
+          <span class="sel-check">${icon("check", "xs")}</span></button>`).join("")}</div>
+      <p class="hint-small">Die Kosten sind geschätzt. Bezahlt wird nur, was eine Suche wirklich verbraucht.</p>
       ${c.configured && !c.from_env ? `<div class="btn-col"><button class="btn danger" type="button" id="ai-remove">Schlüssel entfernen</button></div>` : ""}`,
     foot: `<button class="btn primary big" type="button" id="ai-save">Speichern</button>`,
     bind(el) {
@@ -658,9 +657,13 @@ function aiPage({ pop, close, redraw: again, onSaved }) {
         }
       };
       $("#ai-save", el).addEventListener("click", () => {
-        const body = { key: $("#ai-key", el)?.value.trim() || null };  // only what changed: an address set on the server stays
-        for (const f of ["model", "url"]) { const v = $(`#ai-${f}`, el).value.trim(); if (v !== c[f]) body[f] = v; }
+        const body = { key: $("#ai-key", el)?.value.trim() || null };  // only what changed: a model set on the server stays
+        const model = $("#ai-models [aria-pressed=true]", el)?.dataset.model;
+        if (model && model !== c.model) body.model = model;
         send(body, "Gespeichert");
+      });
+      for (const b of $$("[data-model]", el)) b.addEventListener("click", () => {
+        for (const o of $$("[data-model]", el)) { const on = o === b; o.setAttribute("aria-pressed", on); o.setAttribute("aria-checked", on); }
       });
       $("#ai-remove", el)?.addEventListener("click", () => send({ key: "" }, "Schlüssel entfernt"));
     },

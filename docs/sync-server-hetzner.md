@@ -126,17 +126,16 @@ cd /opt/mtgdeck-sync && docker compose exec sync mtg-sync-server pair
 ## Kartensuche mit KI (Handy)
 
 Im Karten-Tab der Handy-App kannst du unter **Beschreiben** in eigenen Worten sagen, was eine Karte tun soll (dazu
-optional Farbidentität und Kartentyp). Der Server lässt ein Sprachmodell daraus eine Scryfall-Suche machen; das Handy
+optional Farbidentität und Kartentyp). Der Server lässt Claude daraus eine Scryfall-Suche machen; das Handy
 fragt dann Scryfall und zeigt die Karten. Farben, Typ und „in Commander erlaubt“ setzt die App selbst dazu.
 
-- **Schlüssel holen:** opencode.ai/console → Workspace mit dem Go-Abo → *Keys* → *Add Service Account* → darin
-  *Add API Key*, Berechtigung *Inference only* → *Create key* (wird nur einmal angezeigt).
-- **Einrichten:** Handy → Einstellungen → *Suche mit KI* → OpenCode-API-Schlüssel einfügen → *Speichern*. Der Schlüssel
-  liegt danach nur auf dem Server (`sync.sqlite`) und wird nie wieder ans Handy geschickt.
-- **Abo:** Standard ist OpenCode Go (`https://opencode.ai/inference/go/v1`, Modell `deepseek-v4-flash`). Mit
-  OpenCode-Zen-Guthaben stattdessen `https://opencode.ai/zen/v1` als Adresse eintragen. Jede andere Adresse mit
-  OpenAI-kompatiblem `/chat/completions` geht auch.
-- **Alternativ per Server-Einstellung** (gewinnt vor dem Handy): `MTG_AI_KEY`, `MTG_AI_MODEL`, `MTG_AI_URL` in der
+- **Schlüssel holen:** platform.claude.com (Claude Console) → *API Keys* → *Create Key* (wird nur einmal angezeigt).
+  Die Console wird getrennt vom Claude-Abo abgerechnet: unter *Billing* muss Guthaben da sein.
+- **Einrichten:** Handy → Einstellungen → *Suche mit KI* → Claude-API-Schlüssel einfügen, Modell wählen → *Speichern*.
+  Der Schlüssel liegt danach nur auf dem Server (`sync.sqlite`) und wird nie wieder ans Handy geschickt.
+- **Modell:** Standard ist Claude Haiku 5.5 (schnell, ≈ 0,03 Cent pro Suche). Sonnet 5.5 (≈ 0,5 Cent) und Opus 5.5
+  (≈ 2 Cent) sind genauer bei verzwickten Beschreibungen. Die Kosten sind geschätzt.
+- **Alternativ per Server-Einstellung** (gewinnt vor dem Handy): `MTG_AI_KEY`, `MTG_AI_MODEL` in der
   `compose.yml` unter `sync: environment:` setzen, dann `docker compose up -d`.
 - Höchstens 12 Suchen pro Minute und Gerät.
 
