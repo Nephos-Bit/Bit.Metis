@@ -302,6 +302,18 @@ def test_card_search_asks_the_model_and_maps_errors():
     assert [m["id"] for m in shown["models"]] == list(cardsearch.MODELS) and "think" not in shown["models"][0]
 
 
+def test_card_search_cache_key_ignores_wording_but_not_meaning():
+    from mtgdeck.sync import cardsearch
+
+    cfg = cardsearch.config({"key": "sk-x"})
+    key = lambda t: cardsearch.cache_key(t, cfg)  # noqa: E731
+    assert key("zieht eine Karte, wenn eine meiner Kreaturen stirbt") == key("Wenn meine Kreatur stirbt, ziehe ich eine Karte!")
+    assert key("draw a card when a creature dies") == key("When a creature dies, draw a card")
+    assert key("zieht eine Karte") != key("zieht keine Karte")  # negations count
+    assert key("zieht zwei Karten") != key("zieht drei Karten")
+    assert key("macht Schätze") != cardsearch.cache_key("macht Schätze", {**cfg, "model": "claude-opus-5-5"})
+
+
 def test_card_search_routes_keep_the_key_on_the_server(tmp_path, monkeypatch):
     from mtgdeck.sync import cardsearch
 
@@ -323,15 +335,21 @@ def test_card_search_routes_keep_the_key_on_the_server(tmp_path, monkeypatch):
 
     calls = []
     monkeypatch.setattr(cardsearch, "ask_model", lambda cfg, text: calls.append(cfg) or '{"query": "o:treasure", "explain": "Schätze"}')
-    monkeypatch.setattr(cardsearch.describe, "__defaults__", (cardsearch.ask_model,))
+    monkeypatch.setattr(cardsearch.translate, "__defaults__", (cardsearch.ask_model,))
     r = client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken", "colors": ["R"], "types": ["creature"]})
     assert r.status_code == 200, r.text
-    assert r.json() == {"query": "o:treasure id<=r t:creature f:commander", "broader": "", "explain": "Schätze"}
+    assert r.json() == {"query": "o:treasure id<=r t:creature f:commander", "broader": "", "explain": "Schätze", "cached": False}
     assert calls[0]["key"] == "sk-abcdefgh9876" and calls[0]["model"] == "claude-sonnet-5-5"
+    # the same description again (other colours, spacing, case): from the cache, no new request
+    r = client.post("/api/app/cards/describe", headers=auth, json={"text": "  Macht   Schatzmarken. ", "colors": ["G"]})
+    assert r.json() == {"query": "o:treasure id<=g f:commander", "broader": "", "explain": "Schätze", "cached": True} and len(calls) == 1
+    client.put("/api/app/ai", headers=auth, json={"model": "claude-haiku-5-5"})  # another model asks anew
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).json()["cached"] is False and len(calls) == 2
 
-    for _ in range(cardsearch.PER_MINUTE):
-        client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"})
-    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).status_code == 429
+    for i in range(cardsearch.PER_MINUTE):
+        client.post("/api/app/cards/describe", headers=auth, json={"text": f"macht {i} Schatzmarken"})
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht viele Schatzmarken"}).status_code == 429
+    assert client.post("/api/app/cards/describe", headers=auth, json={"text": "macht Schatzmarken"}).status_code == 200  # cached: no limit
 
     assert client.put("/api/app/ai", headers=auth, json={"key": ""}).json()["configured"] is False
     monkeypatch.setenv("MTG_AI_KEY", "sk-from-env-0000")

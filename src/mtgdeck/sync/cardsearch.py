@@ -13,6 +13,7 @@ Colour identity and card type are not left to the model: ``compose()`` adds them
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -159,18 +160,57 @@ def ask_model(cfg: dict[str, Any], text: str) -> str:
     return "".join(b.get("text", "") for b in data["content"] if isinstance(b, dict) and b.get("type") == "text")
 
 
-def describe(text: str, colors: list[str] | None, types: list[str] | None, cfg: dict[str, Any],
-             ask: Callable[[dict[str, Any], str], str] = ask_model) -> dict[str, Any]:  # fmt: skip
-    """A description → ``{query, broader, explain}`` (both queries with the fixed filters)."""
+# Words that don't change what a description asks for. Negations ("nicht", "kein", "ohne", "not", "no") stay.
+_FILLER = set("""der die das den dem des ein eine einen einem einer eines und wenn wann sobald dann ich du er sie es wir
+    mir mich mein meine meinen meinem meiner meines dein deine sich soll sollte sollen kann könnte will möchte bitte
+    etwas mal so also irgendwie gerne immer jede jeder jedes jedem jeden
+    a an the and i my me you your it its is are be that which when whenever then should can could would will please
+    some any""".split())  # fmt: skip
+
+
+def _stem(word: str) -> str:
+    """A rough stem so "zieht", "ziehe" and "ziehen" or "Karte" and "Karten" meet; short words stay as they are."""
+    if len(word) > 4:
+        for end in ("en", "er", "es", "st", "e", "t", "n", "s"):
+            if word.endswith(end):
+                return word[: -len(end)]
+    return word
+
+
+def _gist(text: str) -> str:
+    """The words of a description without case, punctuation, order, filler words and endings."""
+    words = re.findall(r"[\w+/-]+", str(text or "").lower()[:MAX_TEXT])
+    return " ".join(sorted({_stem(w) for w in words if w not in _FILLER}))
+
+
+def cache_key(text: str, cfg: dict[str, Any]) -> str:
+    """The same description – also reworded, as long as the same words remain – with the same model and prompt
+    = one answer. Colours and types are not part of it: ``finish()`` adds them, so changing them costs nothing."""
+    return hashlib.sha256("\n".join([_gist(text), cfg["model"], PROMPT]).encode()).hexdigest()
+
+
+def translate(text: str, cfg: dict[str, Any], ask: Callable[[dict[str, Any], str], str] = ask_model) -> dict[str, Any]:
+    """A description → the model's ``{query, broader, explain}`` without the fixed filters (what gets cached)."""
     text = " ".join(str(text or "").split())[:MAX_TEXT]
     if len(text) < 3:
         raise SearchError("Beschreib kurz, was die Karte tun soll.", 400)
     if not cfg.get("key"):
-        raise SearchError("Die KI-Kartensuche ist noch nicht eingerichtet – Einstellungen → Kartensuche mit KI.", 409)
+        raise SearchError("Die KI-Kartensuche ist noch nicht eingerichtet – Einstellungen → Suche mit KI.", 409)
     got = _json_from(ask(cfg, text))
     query, broader = clean_query(got.get("query")), clean_query(got.get("broader"))
     if not query and not broader:
         raise SearchError("Die KI hat keine Suche geliefert – bitte anders beschreiben.")
-    full = compose(query or broader, colors, types)
-    wide = compose(broader, colors, types) if broader else ""
-    return {"query": full, "broader": wide if wide != full else "", "explain": str(got.get("explain") or "")[:200]}
+    return {"query": query or broader, "broader": broader, "explain": str(got.get("explain") or "")[:200]}
+
+
+def finish(raw: dict[str, Any], colors: list[str] | None, types: list[str] | None, *, cached: bool = False) -> dict[str, Any]:
+    """The model's answer plus colour identity, types and ``f:commander``."""
+    full = compose(raw.get("query") or "", colors, types)
+    wide = compose(raw["broader"], colors, types) if raw.get("broader") else ""
+    return {"query": full, "broader": wide if wide != full else "", "explain": raw.get("explain") or "", "cached": cached}
+
+
+def describe(text: str, colors: list[str] | None, types: list[str] | None, cfg: dict[str, Any],
+             ask: Callable[[dict[str, Any], str], str] = ask_model) -> dict[str, Any]:  # fmt: skip
+    """A description → ``{query, broader, explain, cached}`` (both queries with the fixed filters), uncached."""
+    return finish(translate(text, cfg, ask), colors, types)

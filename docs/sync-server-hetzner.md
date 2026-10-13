@@ -137,7 +137,11 @@ fragt dann Scryfall und zeigt die Karten. Farben, Typ und „in Commander erlaub
   (≈ 2 Cent) sind genauer bei verzwickten Beschreibungen. Die Kosten sind geschätzt.
 - **Alternativ per Server-Einstellung** (gewinnt vor dem Handy): `MTG_AI_KEY`, `MTG_AI_MODEL` in der
   `compose.yml` unter `sync: environment:` setzen, dann `docker compose up -d`.
-- Höchstens 12 Suchen pro Minute und Gerät.
+- **Auch am PC:** Karten-Tab eines Decks → *Bearbeiten* → „Keinen Namen im Kopf? …“. Der PC fragt über den Sync-Server,
+  nutzt also denselben Schlüssel und dasselbe Modell (einrichten geht auch dort).
+- **Gespeicherte Antworten:** Dieselbe Beschreibung (auch umformuliert, solange dieselben Wörter vorkommen) mit demselben
+  Modell kostet nur einmal; Farben und Typ ändern kostet nichts. Der Server merkt sich bis zu 5.000 Antworten 180 Tage lang.
+- Höchstens 12 neue Suchen pro Minute und Gerät.
 
 ## Updates
 

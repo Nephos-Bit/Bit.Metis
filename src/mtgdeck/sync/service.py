@@ -194,6 +194,19 @@ def _connected(roots: Roots | None) -> dict[str, Any]:
     return cfg
 
 
+def describe_cards(text: str, colors: list[str], types: list[str], roots: Roots | None = None,
+             client: httpx.Client | None = None) -> dict[str, Any]:  # fmt: skip
+    """Card search by description through the own sync server, which holds the Claude key."""
+    with transport(_connected(roots), client) as t:
+        return t.describe(text, colors, types)
+
+
+def ai(change: dict[str, Any] | None = None, roots: Roots | None = None, client: httpx.Client | None = None) -> dict[str, Any]:
+    """The sync server's AI search settings (``change`` sets key/model)."""
+    with transport(_connected(roots), client) as t:
+        return t.ai(change)
+
+
 def devices(roots: Roots | None = None, client: httpx.Client | None = None) -> list[dict[str, Any]]:
     with transport(_connected(roots), client) as t:
         return t.devices()

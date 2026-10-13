@@ -54,6 +54,7 @@ MAX_DOC_BYTES = 64 * 1024 * 1024
 MAX_INFO_BYTES = 4096
 CLAIM_FAILS, CLAIM_WINDOW = 20, 600  # at most 20 wrong codes per 10 minutes
 BACKUP_KEEP = 14
+AI_CACHE_DAYS, AI_CACHE_MAX = 180, 5000  # remembered AI card searches (same description + model = no new request)
 APP_DIR = Path(__file__).parent / "app"  # the phone app ("Am Tisch"), served under /app/
 # connect-src lists the image CDN too: the service worker (which gets this header with sw.js) fetches the card images
 APP_CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.scryfall.io; "
@@ -95,6 +96,7 @@ class Devices:
                 CREATE TABLE IF NOT EXISTS app_ops (
                     id TEXT PRIMARY KEY, at REAL NOT NULL, device TEXT, ok INTEGER NOT NULL, error TEXT);
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS ai_cache (key TEXT PRIMARY KEY, at REAL NOT NULL, value TEXT NOT NULL);
                 DROP TABLE IF EXISTS jobs;  -- the former questions for Claude from the phone
             """)
 
@@ -122,6 +124,18 @@ class Devices:
                 db.execute("DELETE FROM settings WHERE key = ?", (key,))
             else:
                 db.execute("INSERT OR REPLACE INTO settings(key, value) VALUES (?,?)", (key, json.dumps(value)))
+
+    def cached(self, key: str) -> dict[str, Any] | None:
+        """A remembered answer of the AI card search (same description and model)."""
+        with self._db() as db:
+            row = db.execute("SELECT value FROM ai_cache WHERE key = ? AND at > ?", (key, time.time() - AI_CACHE_DAYS * 86400)).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def remember(self, key: str, value: dict[str, Any]) -> None:
+        with self._lock, self._db() as db:
+            db.execute("INSERT OR REPLACE INTO ai_cache(key, at, value) VALUES (?,?,?)", (key, time.time(), json.dumps(value)))
+            db.execute("DELETE FROM ai_cache WHERE at < ? OR key NOT IN (SELECT key FROM ai_cache ORDER BY at DESC LIMIT ?)",
+                       (time.time() - AI_CACHE_DAYS * 86400, AI_CACHE_MAX))  # fmt: skip
 
     def _db(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=30)
@@ -507,8 +521,14 @@ def create_app(data: Path | None = None, public_url: str | None = None) -> FastA
 
     @app.post("/api/app/cards/describe")
     async def cards_describe(req: DescribeRequest, me: dict[str, Any] = Depends(device)) -> dict[str, Any]:
+        """Cached per description and model (shared by all devices), so asking again costs nothing."""
         from . import cardsearch
 
+        cfg = await asyncio.to_thread(ai_config)
+        key = cardsearch.cache_key(req.text, cfg)
+        hit = await asyncio.to_thread(devices.cached, key)
+        if hit:
+            return cardsearch.finish(hit, req.colors, req.types, cached=True)
         now = time.time()
         recent = asks.setdefault(me["id"], deque())
         while recent and now - recent[0] > 60:
@@ -517,9 +537,11 @@ def create_app(data: Path | None = None, public_url: str | None = None) -> FastA
             raise HTTPException(429, "Kurz durchatmen – zu viele Suchen in einer Minute.")
         recent.append(now)
         try:
-            return await asyncio.to_thread(cardsearch.describe, req.text, req.colors, req.types, ai_config())
+            raw = await asyncio.to_thread(cardsearch.translate, req.text, cfg)
         except cardsearch.SearchError as exc:
             raise HTTPException(exc.status, str(exc)) from None
+        await asyncio.to_thread(devices.remember, key, raw)
+        return cardsearch.finish(raw, req.colors, req.types)
 
     return app
 

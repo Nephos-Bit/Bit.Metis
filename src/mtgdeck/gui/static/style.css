@@ -416,6 +416,21 @@ ul.issues li { margin-bottom: 3px; }
 .chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--space-3); }
 .chip { background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: 99px; padding: 4px 12px; font: 13px var(--font); cursor: pointer; }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chip[aria-pressed="true"]:hover { color: var(--on-accent); }
+
+/* card search by description */
+.add-card #describe-open { grid-column: 1 / -1; justify-self: start; min-height: 0; padding: 2px 6px; margin: -2px 0 -4px -6px; font-size: var(--fs-sm); }
+.describe-form textarea { width: 100%; resize: vertical; min-height: 64px; }
+.describe-filters { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin-top: var(--space-3); }
+.describe-filters .chips-row { margin-top: 4px; }
+.describe-actions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
+.describe-setup, .describe-query { margin-top: var(--space-4); }
+.describe-setup-row { display: flex; gap: var(--space-2); margin-top: 4px; flex-wrap: wrap; }
+.describe-setup-row input { flex: 1 1 260px; min-width: 0; }
+.describe-setup-row select { width: auto; }
+#describe-q { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-sm); }
+#describe-hint { margin: var(--space-3) 0; }
 
 /* history */
 .compare { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
