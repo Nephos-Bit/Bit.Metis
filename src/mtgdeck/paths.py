@@ -20,7 +20,8 @@ import os
 import sys
 from pathlib import Path
 
-APP_NAME = "MTG Deckbuilder"
+APP_NAME = "MTG Deckbuilder"  # data folder (%APPDATA%\MTG Deckbuilder); not the name shown in the window
+DISPLAY_NAME = "Metis"
 APP_ID = "app.mtgdeck.desktop"  # the desktop app's identifier (tauri.conf.json)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

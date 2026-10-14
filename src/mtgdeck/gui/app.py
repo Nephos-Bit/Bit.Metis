@@ -60,7 +60,7 @@ async def _lifespan(_app: FastAPI):
             task.cancel()
 
 
-app = FastAPI(title="MTG Commander Deckbuilder", lifespan=_lifespan)
+app = FastAPI(title="Metis", lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -280,7 +280,7 @@ def _ago(ts: Any) -> str:
 
 def _desktop_tooltip() -> str:
     """What the tray icon shows on hover: the app's name and the state that matters."""
-    lines = [paths.APP_NAME]
+    lines = [paths.DISPLAY_NAME]
     running = sum(1 for j in JOBS.values() if not j.done)
     if running:
         lines.append("Ein Auftrag läuft" if running == 1 else f"{running} Aufträge laufen")
@@ -1870,7 +1870,7 @@ def serve() -> None:
     port = sock.getsockname()[1]
     shown = f"[{host}]" if ":" in host else host
     url = f"http://{shown}:{port}/" + (f"?token={GUI_TOKEN}" if GUI_TOKEN else "")
-    print(f"Commander Deckbuilder GUI: {url}")
+    print(f"Metis: {url}")
     print(f"MTGDECK_URL={url}", flush=True)
     try:
         made = backup.auto_backup()

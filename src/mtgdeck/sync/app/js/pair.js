@@ -18,7 +18,7 @@ export function welcome(code = null) {
   const html = `<div class="welcome">
       <img class="app-icon" src="/app/icons/icon-192.png" alt="" width="88" height="88">
       <h1>Am Tisch</h1>
-      <p class="lead">Partien und Gegnerdecks am Spieltisch festhalten – verbunden mit deinem Deckbuilder am PC.</p>
+      <p class="lead">Partien und Gegnerdecks am Spieltisch festhalten – verbunden mit Metis am PC.</p>
       ${state.revoked ? `<p class="notice">${icon("shield", "sm")}<span>Dieses Handy wurde abgemeldet. Mit einem neuen Code verbindest du es wieder – was noch nicht gesendet war, geht dann mit.</span></p>` : ""}
       <div class="welcome-actions">
         <button class="btn primary big" type="button" id="scan">${icon("qr")}QR-Code scannen</button>
@@ -66,7 +66,7 @@ function installSteps(code) {
 function confirmLink(code) {
   const html = `<div class="welcome">
       <img class="app-icon" src="/app/icons/icon-192.png" alt="" width="72" height="72">
-      <h1>Mit deinem Deckbuilder verbinden?</h1>
+      <h1>Mit Metis verbinden?</h1>
       <p class="lead">Dieses Handy verbindet sich mit <b>${esc(location.host)}</b>. Danach siehst du deine Decks und Gegner und kannst Partien eintragen.</p>
       <label class="field welcome-field"><span class="field-label">Name dieses Handys</span>
         <input class="input" id="pair-name" value="${esc(defaultName())}" maxlength="60" autocomplete="off" enterkeyhint="go"></label>
